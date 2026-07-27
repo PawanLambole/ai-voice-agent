@@ -1249,18 +1249,21 @@ async function initLanguagePage() {{
 function renderLangGrid() {{
   const grid = document.getElementById('lang-grid');
   if (!grid) return;
-  grid.innerHTML = Object.entries(LANG_PRESETS).map(([id, p]) => `
-    <div onclick="selectLangPreset('${{id}}')" style="
-      background:${{id===currentLangPreset ? 'rgba(108,99,255,0.15)' : 'var(--bg)'}};
-      border:2px solid ${{id===currentLangPreset ? p.color : 'var(--border)'}};
-      border-radius:12px;padding:18px;cursor:pointer;transition:all 0.15s;
-      ${{id===currentLangPreset ? 'box-shadow:0 0 16px rgba(108,99,255,0.2)' : ''}}
-    " onmouseover="this.style.borderColor='${{p.color}}'" onmouseout="this.style.borderColor='${{id===currentLangPreset?p.color:'var(--border)}}'">
+  grid.innerHTML = Object.entries(LANG_PRESETS).map(([id, p]) => {{
+    const active = id === currentLangPreset;
+    const border = active ? p.color : 'var(--border)';
+    const bg = active ? 'rgba(108,99,255,0.15)' : 'var(--bg)';
+    const shadow = active ? 'box-shadow:0 0 16px rgba(108,99,255,0.2);' : '';
+    const badge = active ? '<div style="font-size:10px;color:#22c55e;margin-top:6px;font-weight:600;">✓ ACTIVE</div>' : '';
+    const textColor = active ? p.color : 'var(--text)';
+    return `
+    <div onclick="selectLangPreset('${{id}}')" style="background:${{bg}};border:2px solid ${{border}};border-radius:12px;padding:18px;cursor:pointer;transition:all 0.15s;${{shadow}}">
       <div style="font-size:28px;margin-bottom:8px;">${{p.flag}}</div>
-      <div style="font-weight:700;font-size:14px;color:${{id===currentLangPreset?p.color:'var(--text)'}}">${{p.label}}</div>
+      <div style="font-weight:700;font-size:14px;color:${{textColor}}">${{p.label}}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:3px;">${{p.sub}}</div>
-      ${{id===currentLangPreset ? '<div style="font-size:10px;color:#22c55e;margin-top:6px;font-weight:600;">✓ ACTIVE</div>' : ''}}
-    </div>`).join('');
+      ${{badge}}
+    </div>`;
+  }}).join('');
 }}
 
 async function selectLangPreset(id) {{
