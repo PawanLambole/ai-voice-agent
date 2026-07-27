@@ -118,22 +118,57 @@ def save_config_to_db(data: dict) -> bool:
 
 # ─── knowledge_base ───────────────────────────────────────────────────────────
 
+def _seed_default_knowledge(supabase) -> list:
+    """Helper to seed initial default knowledge entries if the table is empty."""
+    default_entries = [
+        {
+            "title": "General Guidelines & Scope",
+            "content": (
+                "* Do not discuss technical implementation or internal company details.\n"
+                "* Do not answer questions unrelated to the application or business services.\n"
+                "* If you do not know the answer, politely inform the caller that a representative will assist them.\n"
+                "* Never promise features or information that are not explicitly mentioned in this knowledge base."
+            ),
+            "is_active": True,
+        },
+        {
+            "title": "Company & Business Services",
+            "content": (
+                "We assist callers with inquiries, service details, pricing information, and booking appointments. "
+                "Always maintain a polite, helpful, and professional tone."
+            ),
+            "is_active": True,
+        }
+    ]
+    try:
+        res = supabase.table("knowledge_base").insert(default_entries).execute()
+        logger.info("Auto-seeded default knowledge base entries.")
+        return res.data or []
+    except Exception as e:
+        logger.warning(f"Could not auto-seed default knowledge: {e}")
+        return []
+
+
 def fetch_knowledge_base(active_only: bool = False) -> list:
     """
-    Fetch all knowledge base entries, ordered by sort_order then created_at.
+    Fetch all knowledge base entries, ordered by created_at.
     If active_only=True, returns only entries with is_active=True.
     Returns [] if DB not configured or table missing.
+    Auto-seeds default initial knowledge entries if table is empty.
     """
     supabase = get_supabase()
     if not supabase:
         return []
     for attempt in range(_MAX_RETRIES):
         try:
-            q = supabase.table("knowledge_base").select("*").order("sort_order").order("created_at")
+            q = supabase.table("knowledge_base").select("*").order("created_at")
             if active_only:
                 q = q.eq("is_active", True)
             res = q.execute()
-            return res.data or []
+            data = res.data or []
+            if not data and not active_only:
+                data = _seed_default_knowledge(supabase)
+            return data
         except Exception as e:
             err = str(e)
             if _is_retryable(err) and attempt < _MAX_RETRIES - 1:

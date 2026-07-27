@@ -1124,12 +1124,6 @@ async def get_dashboard():
       <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px;">Content <span style="color:var(--accent)">*</span></label>
       <textarea id="kb-content" rows="8" placeholder="Write the knowledge content here. Be specific and clear. Example:\n\nOur Starter plan costs ₹999/month and includes 500 AI calls, 5 languages, and email support.\nOur Pro plan costs ₹2499/month and includes unlimited calls, all 10 languages, priority support, and custom voice." style="width:100%;padding:10px 14px;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;line-height:1.6;resize:vertical;font-family:inherit;"></textarea>
     </div>
-    <div style="display:flex;gap:10px;margin-bottom:14px;">
-      <div style="flex:1;">
-        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px;">Sort Order (lower = injected first)</label>
-        <input id="kb-sort" type="number" value="0" min="0" max="999" style="width:100%;padding:10px 14px;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;">
-      </div>
-    </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button class="btn btn-ghost btn-sm" onclick="closeKbModal()">Cancel</button>
       <button class="btn btn-primary btn-sm" onclick="saveKbEntry()" id="kb-save-btn">Save Entry</button>
@@ -1577,7 +1571,6 @@ function openKbModal(id) {{
   if (!id) {{
     document.getElementById('kb-title').value = '';
     document.getElementById('kb-content').value = '';
-    document.getElementById('kb-sort').value = 0;
   }}
   document.getElementById('kb-modal').classList.add('open');
   setTimeout(() => document.getElementById('kb-title').focus(), 100);
@@ -1593,14 +1586,12 @@ function editKbEntry(id) {{
   openKbModal(id);
   document.getElementById('kb-title').value   = e.title   || '';
   document.getElementById('kb-content').value = e.content || '';
-  document.getElementById('kb-sort').value    = e.sort_order ?? 0;
 }}
 
 async function saveKbEntry() {{
   const id      = document.getElementById('kb-edit-id').value;
   const title   = document.getElementById('kb-title').value.trim();
   const content = document.getElementById('kb-content').value.trim();
-  const sort    = parseInt(document.getElementById('kb-sort').value) || 0;
   if (!content) {{ alert('Content is required.'); return; }}
   const btn = document.getElementById('kb-save-btn');
   btn.disabled = true; btn.textContent = 'Saving…';
@@ -1609,12 +1600,12 @@ async function saveKbEntry() {{
     if (id) {{
       res = await fetch('/api/knowledge/' + id, {{
         method: 'PUT', headers: {{'Content-Type':'application/json'}},
-        body: JSON.stringify({{ title, content, sort_order: sort }})
+        body: JSON.stringify({{ title, content }})
       }}).then(r => r.json());
     }} else {{
       res = await fetch('/api/knowledge', {{
         method: 'POST', headers: {{'Content-Type':'application/json'}},
-        body: JSON.stringify({{ title, content, sort_order: sort }})
+        body: JSON.stringify({{ title, content }})
       }}).then(r => r.json());
     }}
     if (res.success === false) {{ alert('Error: ' + (res.message || 'Unknown error')); return; }}
