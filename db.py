@@ -46,6 +46,76 @@ def get_supabase() -> Client | None:
         return None
 
 
+# ─── agent_config (cloud settings) ───────────────────────────────────────────
+
+def load_config_from_db() -> dict | None:
+    """
+    Load agent configuration from the `agent_config` table in Supabase.
+    Returns the stored dict, or None if DB is not configured / table missing.
+    """
+    supabase = get_supabase()
+    if not supabase:
+        return None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            res = (
+                supabase.table("agent_config")
+                .select("data")
+                .eq("id", "default")
+                .single()
+                .execute()
+            )
+            row = res.data
+            if isinstance(row, dict) and "data" in row:
+                data = row["data"]
+                if isinstance(data, dict):
+                    return data
+            return None
+        except Exception as e:
+            err = str(e)
+            if _is_retryable(err) and attempt < _MAX_RETRIES - 1:
+                time.sleep(_RETRY_DELAYS[attempt])
+                continue
+            # Table might not exist yet — not an error worth logging loudly
+            if "does not exist" in err.lower() or "PGRST116" in err or "relation" in err.lower():
+                logger.info("agent_config table not found — run supabase_migration_config.sql first.")
+            else:
+                logger.warning(f"Could not load config from DB: {err[:120]}")
+            return None
+    return None
+
+
+def save_config_to_db(data: dict) -> bool:
+    """
+    Upsert the full agent configuration dict into `agent_config`.
+    Returns True on success, False on failure.
+    """
+    # Never persist supabase_url / supabase_key into the DB itself
+    # (they are needed to connect — chicken-and-egg problem)
+    safe_data = {k: v for k, v in data.items() if k not in ("supabase_url", "supabase_key")}
+
+    supabase = get_supabase()
+    if not supabase:
+        logger.info("Supabase not configured — skipping cloud config save.")
+        return False
+    for attempt in range(_MAX_RETRIES):
+        try:
+            supabase.table("agent_config").upsert(
+                {"id": "default", "data": safe_data},
+                on_conflict="id"
+            ).execute()
+            logger.info("Agent config saved to Supabase.")
+            return True
+        except Exception as e:
+            err = str(e)
+            if _is_retryable(err) and attempt < _MAX_RETRIES - 1:
+                time.sleep(_RETRY_DELAYS[attempt])
+                continue
+            logger.error(f"Failed to save config to DB: {err[:120]}")
+            return False
+    return False
+
+
 # ─── save_call_log ────────────────────────────────────────────────────────────
 
 def save_call_log(

@@ -14,51 +14,117 @@ app = FastAPI(title="RapidX AI Dashboard")
 
 CONFIG_FILE = "config.json"
 
-def read_config():
-    config = {}
+# Keys that come from environment only (used to connect to DB — can't store in DB)
+_ENV_ONLY_KEYS = ("supabase_url", "supabase_key")
+
+
+def _read_local_config() -> dict:
+    """Read raw config.json (no env fallback, no DB)."""
     if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "r") as f:
-            config = json.load(f)
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
 
-    def get_val(key, env_key, default=""):
-        return config.get(key) if config.get(key) else os.getenv(env_key, default)
 
-    return {
-        "first_line": get_val("first_line", "FIRST_LINE", "Namaste! This is Aryan from RapidX AI — we help businesses automate with AI. Hmm, may I ask what kind of business you run?"),
-        "agent_instructions": get_val("agent_instructions", "AGENT_INSTRUCTIONS", ""),
-        "stt_min_endpointing_delay": float(get_val("stt_min_endpointing_delay", "STT_MIN_ENDPOINTING_DELAY", 0.6) or 0.6),
-        "llm_model": get_val("llm_model", "LLM_MODEL", "gpt-4o-mini"),
-        "tts_voice": get_val("tts_voice", "TTS_VOICE", "kavya"),
-        "tts_language": get_val("tts_language", "TTS_LANGUAGE", "hi-IN"),
-        "livekit_url": get_val("livekit_url", "LIVEKIT_URL", ""),
-        "sip_trunk_id": get_val("sip_trunk_id", "SIP_TRUNK_ID", ""),
-        "livekit_api_key": get_val("livekit_api_key", "LIVEKIT_API_KEY", ""),
-        "livekit_api_secret": get_val("livekit_api_secret", "LIVEKIT_API_SECRET", ""),
-        "openai_api_key": get_val("openai_api_key", "OPENAI_API_KEY", ""),
-        "sarvam_api_key": get_val("sarvam_api_key", "SARVAM_API_KEY", ""),
-        "cal_api_key": get_val("cal_api_key", "CAL_API_KEY", ""),
-        "cal_event_type_id": get_val("cal_event_type_id", "CAL_EVENT_TYPE_ID", ""),
-        "telegram_bot_token": get_val("telegram_bot_token", "TELEGRAM_BOT_TOKEN", ""),
-        "telegram_chat_id": get_val("telegram_chat_id", "TELEGRAM_CHAT_ID", ""),
-        "supabase_url": get_val("supabase_url", "SUPABASE_URL", ""),
-        "supabase_key": get_val("supabase_key", "SUPABASE_KEY", ""),
-        **config
+def read_config() -> dict:
+    """
+    Merged config priority (highest → lowest):
+      1. Supabase DB  (agent_config table)
+      2. config.json  (local file)
+      3. .env / Render environment variables
+    Supabase credentials themselves always come from env (chicken-and-egg).
+    """
+    # Layer 3: env defaults
+    def env_val(env_key, default=""):
+        return os.getenv(env_key, default)
+
+    base: dict = {
+        "first_line": env_val("FIRST_LINE", "Namaste! This is Aryan from RapidX AI — we help businesses automate with AI. Hmm, may I ask what kind of business you run?"),
+        "agent_instructions": env_val("AGENT_INSTRUCTIONS", ""),
+        "stt_min_endpointing_delay": float(env_val("STT_MIN_ENDPOINTING_DELAY", "0.6") or 0.6),
+        "llm_model": env_val("LLM_MODEL", "gpt-4o-mini"),
+        "tts_voice": env_val("TTS_VOICE", "kavya"),
+        "tts_language": env_val("TTS_LANGUAGE", "hi-IN"),
+        "livekit_url": env_val("LIVEKIT_URL", ""),
+        "sip_trunk_id": env_val("SIP_TRUNK_ID", ""),
+        "livekit_api_key": env_val("LIVEKIT_API_KEY", ""),
+        "livekit_api_secret": env_val("LIVEKIT_API_SECRET", ""),
+        "openai_api_key": env_val("OPENAI_API_KEY", ""),
+        "sarvam_api_key": env_val("SARVAM_API_KEY", ""),
+        "cal_api_key": env_val("CAL_API_KEY", ""),
+        "cal_event_type_id": env_val("CAL_EVENT_TYPE_ID", ""),
+        "telegram_bot_token": env_val("TELEGRAM_BOT_TOKEN", ""),
+        "telegram_chat_id": env_val("TELEGRAM_CHAT_ID", ""),
+        # Supabase creds always from env
+        "supabase_url": env_val("SUPABASE_URL", ""),
+        "supabase_key": env_val("SUPABASE_KEY", ""),
     }
 
-def write_config(data):
-    config = read_config()
-    config.update(data)
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=4)
+    # Layer 2: local config.json (override env defaults)
+    local = _read_local_config()
+    for k, v in local.items():
+        if v not in ("", None):
+            base[k] = v
+    # Always keep supabase creds from env (never from config.json)
+    base["supabase_url"] = env_val("SUPABASE_URL", "") or local.get("supabase_url", "")
+    base["supabase_key"] = env_val("SUPABASE_KEY", "") or local.get("supabase_key", "")
+
+    # Layer 1: Supabase DB (highest priority — set via UI, survives redeployments)
+    ensure_supabase_env_from(base)
+    try:
+        import db
+        db_cfg = db.load_config_from_db()
+        if db_cfg and isinstance(db_cfg, dict):
+            for k, v in db_cfg.items():
+                if k not in _ENV_ONLY_KEYS and v not in ("", None):
+                    base[k] = v
+    except Exception as e:
+        logger.debug(f"DB config load skipped: {e}")
+
+    return base
+
+
+def write_config(data: dict):
+    """
+    Save config to both Supabase DB (primary) and config.json (local backup).
+    """
+    current = _read_local_config()
+    current.update(data)
+
+    # 1. Write local backup
+    try:
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(current, f, indent=4)
+    except Exception as e:
+        logger.warning(f"Could not write config.json: {e}")
+
+    # 2. Write to Supabase DB
+    ensure_supabase_env_from(current)
+    try:
+        import db
+        db.save_config_to_db(current)
+    except Exception as e:
+        logger.warning(f"Could not save config to DB: {e}")
+
+
+def ensure_supabase_env_from(cfg: dict):
+    """Set SUPABASE_URL/KEY from cfg dict only if they are non-empty strings."""
+    url = cfg.get("supabase_url") or os.environ.get("SUPABASE_URL", "")
+    key = cfg.get("supabase_key") or os.environ.get("SUPABASE_KEY", "")
+    if url:
+        os.environ["SUPABASE_URL"] = url
+    if key:
+        os.environ["SUPABASE_KEY"] = key
 
 # ── API Endpoints ──────────────────────────────────────────────────────────────
 
 def ensure_supabase_env():
-    config = read_config()
-    if config.get("supabase_url"):
-        os.environ["SUPABASE_URL"] = config["supabase_url"]
-    if config.get("supabase_key"):
-        os.environ["SUPABASE_KEY"] = config["supabase_key"]
+    """Set SUPABASE env vars from config (DB → config.json → .env)."""
+    cfg = read_config()
+    ensure_supabase_env_from(cfg)
 
 # ── API Endpoints ──────────────────────────────────────────────────────────────
 
