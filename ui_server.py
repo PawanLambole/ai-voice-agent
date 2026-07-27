@@ -1071,50 +1071,65 @@ async def get_dashboard():
 
     <div id="page-credentials" class="page">
     <div class="page-header">
-      <div class="page-title">API Credentials</div>
-      <div class="page-sub">Credentials here override .env values at runtime. Never share this page.</div>
+      <div class="page-title">🔑 API Credentials</div>
+      <div class="page-sub">Click any category card below to view or edit API configurations</div>
     </div>
-    <div class="section-card">
-      <div class="section-title">LiveKit</div>
-      <div class="form-row">
-        <div class="form-group"><label>LiveKit URL</label><input type="text" id="livekit_url" value="{config.get('livekit_url', '')}"></div>
-        <div class="form-group"><label>SIP Trunk ID</label><input type="text" id="sip_trunk_id" value="{config.get('sip_trunk_id', '')}"></div>
-        <div class="form-group"><label>API Key</label><input type="password" id="livekit_api_key" value="{config.get('livekit_api_key', '')}"></div>
-        <div class="form-group"><label>API Secret</label><input type="password" id="livekit_api_secret" value="{config.get('livekit_api_secret', '')}"></div>
-      </div>
-    </div>
-    <div class="section-card">
-      <div class="section-title">AI Providers</div>
-      <div class="form-row">
-        <div class="form-group"><label>Groq API Key</label><input type="password" id="groq_api_key" value="{config.get('groq_api_key', '')}"></div>
-        <div class="form-group"><label>OpenAI API Key</label><input type="password" id="openai_api_key" value="{config.get('openai_api_key', '')}"></div>
-        <div class="form-group"><label>Anthropic API Key</label><input type="password" id="anthropic_api_key" value="{config.get('anthropic_api_key', '')}"></div>
-        <div class="form-group"><label>Sarvam API Key</label><input type="password" id="sarvam_api_key" value="{config.get('sarvam_api_key', '')}"></div>
-      </div>
-    </div>
-    <div class="section-card">
-      <div class="section-title">Integrations</div>
-      <div class="form-row">
-        <div class="form-group"><label>Cal.com API Key</label><input type="password" id="cal_api_key" value="{config.get('cal_api_key', '')}"></div>
-        <div class="form-group"><label>Cal.com Event Type ID</label><input type="text" id="cal_event_type_id" value="{config.get('cal_event_type_id', '')}"></div>
-        <div class="form-group"><label>Telegram Bot Token</label><input type="password" id="telegram_bot_token" value="{config.get('telegram_bot_token', '')}"></div>
-        <div class="form-group"><label>Telegram Chat ID</label><input type="text" id="telegram_chat_id" value="{config.get('telegram_chat_id', '')}"></div>
-        <div class="form-group"><label>Supabase URL</label><input type="text" id="supabase_url" value="{config.get('supabase_url', '')}"></div>
-        <div class="form-group"><label>Supabase Anon Key</label><input type="password" id="supabase_key" value="{config.get('supabase_key', '')}"></div>
-      </div>
-    <div class="section-card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+
+    <!-- Category Grid Cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;">
+      
+      <!-- Card 1: LiveKit -->
+      <div class="stat-card" style="padding:24px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;" onclick="openCredModal('livekit')">
         <div>
-          <div class="section-title" style="margin:0;">Custom API Configurations &amp; Keys</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:4px;">Add custom API keys or environment settings for integrations</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="font-size:32px;">📡</div>
+            <span class="badge badge-green">LiveKit</span>
+          </div>
+          <div style="font-size:16px;font-weight:700;margin-bottom:4px;">LiveKit &amp; Telephony</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5;">LiveKit WebSocket URL, SIP Trunk ID, API Key, and Secret</div>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="addCustomCredRow()">+ Add Custom API Key</button>
+        <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:12px;">Configure →</button>
       </div>
-      <div id="custom-cred-list" style="display:flex;flex-direction:column;gap:12px;"></div>
-    </div>
-    <div class="save-bar">
-      <span class="save-status" id="save-status-credentials">✅ Saved!</span>
-      <button class="btn btn-primary" onclick="saveConfig('credentials')">💾 Save Credentials</button>
+
+      <!-- Card 2: AI Providers -->
+      <div class="stat-card" style="padding:24px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;" onclick="openCredModal('ai')">
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="font-size:32px;">🤖</div>
+            <span class="badge badge-green">AI Providers</span>
+          </div>
+          <div style="font-size:16px;font-weight:700;margin-bottom:4px;">AI Provider Keys</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5;">Groq, OpenAI, Anthropic (Claude), and Sarvam AI keys</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:12px;">Configure →</button>
+      </div>
+
+      <!-- Card 3: Integrations -->
+      <div class="stat-card" style="padding:24px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;" onclick="openCredModal('integrations')">
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="font-size:32px;">🔗</div>
+            <span class="badge badge-green">Integrations</span>
+          </div>
+          <div style="font-size:16px;font-weight:700;margin-bottom:4px;">Integrations &amp; DB</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5;">Cal.com booking, Telegram bot, and Supabase database</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:12px;">Configure →</button>
+      </div>
+
+      <!-- Card 4: Custom API Keys -->
+      <div class="stat-card" style="padding:24px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;" onclick="openCredModal('custom')">
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="font-size:32px;">⚙️</div>
+            <span class="badge badge-gray">Custom</span>
+          </div>
+          <div style="font-size:16px;font-weight:700;margin-bottom:4px;">Custom API Keys</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5;">Add custom API keys and environment variables</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:12px;">Configure →</button>
+      </div>
+
     </div>
   </div>
 
@@ -1172,6 +1187,86 @@ async def get_dashboard():
   </div>
 
 </div><!-- /main -->
+
+<!-- ── Category Modal: LiveKit ── -->
+<div class="modal-overlay" id="cred-modal-livekit" onclick="if(event.target===this)closeCredModal('livekit')">
+  <div class="modal-box" style="position:relative;min-width:540px;">
+    <button class="modal-close" onclick="closeCredModal('livekit')">✕</button>
+    <div class="modal-title">📡 LiveKit &amp; Telephony</div>
+    <div class="modal-sub">LiveKit connection credentials and SIP Trunk settings</div>
+    <div class="form-row" style="margin-bottom:14px;">
+      <div class="form-group"><label>LiveKit URL</label><input type="text" id="livekit_url" value="{config.get('livekit_url', '')}"></div>
+      <div class="form-group"><label>SIP Trunk ID</label><input type="text" id="sip_trunk_id" value="{config.get('sip_trunk_id', '')}"></div>
+      <div class="form-group"><label>API Key</label><input type="password" id="livekit_api_key" value="{config.get('livekit_api_key', '')}"></div>
+      <div class="form-group"><label>API Secret</label><input type="password" id="livekit_api_secret" value="{config.get('livekit_api_secret', '')}"></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;">
+      <span class="save-status" id="save-status-livekit">✅ Saved!</span>
+      <button class="btn btn-ghost btn-sm" onclick="closeCredModal('livekit')">Close</button>
+      <button class="btn btn-primary btn-sm" onclick="saveConfigCategory('livekit')">💾 Save LiveKit</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Category Modal: AI Providers ── -->
+<div class="modal-overlay" id="cred-modal-ai" onclick="if(event.target===this)closeCredModal('ai')">
+  <div class="modal-box" style="position:relative;min-width:540px;">
+    <button class="modal-close" onclick="closeCredModal('ai')">✕</button>
+    <div class="modal-title">🤖 AI Provider Keys</div>
+    <div class="modal-sub">API keys for LLM and Speech services</div>
+    <div class="form-row" style="margin-bottom:14px;">
+      <div class="form-group"><label>Groq API Key</label><input type="password" id="groq_api_key" value="{config.get('groq_api_key', '')}"></div>
+      <div class="form-group"><label>OpenAI API Key</label><input type="password" id="openai_api_key" value="{config.get('openai_api_key', '')}"></div>
+      <div class="form-group"><label>Anthropic API Key</label><input type="password" id="anthropic_api_key" value="{config.get('anthropic_api_key', '')}"></div>
+      <div class="form-group"><label>Sarvam API Key</label><input type="password" id="sarvam_api_key" value="{config.get('sarvam_api_key', '')}"></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;">
+      <span class="save-status" id="save-status-ai">✅ Saved!</span>
+      <button class="btn btn-ghost btn-sm" onclick="closeCredModal('ai')">Close</button>
+      <button class="btn btn-primary btn-sm" onclick="saveConfigCategory('ai')">💾 Save AI Keys</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Category Modal: Integrations ── -->
+<div class="modal-overlay" id="cred-modal-integrations" onclick="if(event.target===this)closeCredModal('integrations')">
+  <div class="modal-box" style="position:relative;min-width:540px;">
+    <button class="modal-close" onclick="closeCredModal('integrations')">✕</button>
+    <div class="modal-title">🔗 Integrations &amp; Database</div>
+    <div class="modal-sub">Cal.com, Telegram, and Supabase credentials</div>
+    <div class="form-row" style="margin-bottom:14px;">
+      <div class="form-group"><label>Cal.com API Key</label><input type="password" id="cal_api_key" value="{config.get('cal_api_key', '')}"></div>
+      <div class="form-group"><label>Cal.com Event Type ID</label><input type="text" id="cal_event_type_id" value="{config.get('cal_event_type_id', '')}"></div>
+      <div class="form-group"><label>Telegram Bot Token</label><input type="password" id="telegram_bot_token" value="{config.get('telegram_bot_token', '')}"></div>
+      <div class="form-group"><label>Telegram Chat ID</label><input type="text" id="telegram_chat_id" value="{config.get('telegram_chat_id', '')}"></div>
+      <div class="form-group"><label>Supabase URL</label><input type="text" id="supabase_url" value="{config.get('supabase_url', '')}"></div>
+      <div class="form-group"><label>Supabase Anon Key</label><input type="password" id="supabase_key" value="{config.get('supabase_key', '')}"></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;">
+      <span class="save-status" id="save-status-integrations">✅ Saved!</span>
+      <button class="btn btn-ghost btn-sm" onclick="closeCredModal('integrations')">Close</button>
+      <button class="btn btn-primary btn-sm" onclick="saveConfigCategory('integrations')">💾 Save Integrations</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Category Modal: Custom Keys ── -->
+<div class="modal-overlay" id="cred-modal-custom" onclick="if(event.target===this)closeCredModal('custom')">
+  <div class="modal-box" style="position:relative;min-width:580px;">
+    <button class="modal-close" onclick="closeCredModal('custom')">✕</button>
+    <div class="modal-title">⚙️ Custom API Configurations &amp; Keys</div>
+    <div class="modal-sub">Add custom environment keys and integration secrets</div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+      <button class="btn btn-primary btn-sm" onclick="addCustomCredRow()">+ Add Custom API Key</button>
+    </div>
+    <div id="custom-cred-list" style="display:flex;flex-direction:column;gap:12px;max-height:360px;overflow-y:auto;margin-bottom:16px;"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;">
+      <span class="save-status" id="save-status-custom">✅ Saved!</span>
+      <button class="btn btn-ghost btn-sm" onclick="closeCredModal('custom')">Close</button>
+      <button class="btn btn-primary btn-sm" onclick="saveConfigCategory('custom')">💾 Save Custom Keys</button>
+    </div>
+  </div>
+</div>
 
 <!-- ── KB Add/Edit Modal ── -->
 <div class="modal-overlay" id="kb-modal" onclick="if(event.target===this)closeKbModal()">
@@ -1439,8 +1534,73 @@ async function saveConfig(section) {{
 
   const statusEl = document.getElementById('save-status-' + section);
   if (res.ok) {{
-    statusEl.style.opacity = '1';
-    setTimeout(() => {{ statusEl.style.opacity = '0'; }}, 2500);
+    if (statusEl) {{
+      statusEl.style.opacity = '1';
+      setTimeout(() => {{ statusEl.style.opacity = '0'; }}, 2500);
+    }}
+  }} else {{
+    alert('Failed to save. Check server logs.');
+  }}
+}}
+
+function openCredModal(cat) {{
+  const modal = document.getElementById('cred-modal-' + cat);
+  if (modal) modal.classList.add('open');
+  if (cat === 'custom') initCustomCreds();
+}}
+
+function closeCredModal(cat) {{
+  const modal = document.getElementById('cred-modal-' + cat);
+  if (modal) modal.classList.remove('open');
+}}
+
+async function saveConfigCategory(cat) {{
+  const get = id => {{ const el = document.getElementById(id); return el ? el.value : null; }};
+  const payload = {{}};
+
+  if (cat === 'livekit') {{
+    Object.assign(payload, {{
+      livekit_url: get('livekit_url'),
+      sip_trunk_id: get('sip_trunk_id'),
+      livekit_api_key: get('livekit_api_key'),
+      livekit_api_secret: get('livekit_api_secret'),
+    }});
+  }} else if (cat === 'ai') {{
+    Object.assign(payload, {{
+      groq_api_key: get('groq_api_key'),
+      openai_api_key: get('openai_api_key'),
+      anthropic_api_key: get('anthropic_api_key'),
+      sarvam_api_key: get('sarvam_api_key'),
+    }});
+  }} else if (cat === 'integrations') {{
+    Object.assign(payload, {{
+      cal_api_key: get('cal_api_key'),
+      cal_event_type_id: get('cal_event_type_id'),
+      telegram_bot_token: get('telegram_bot_token'),
+      telegram_chat_id: get('telegram_chat_id'),
+      supabase_url: get('supabase_url'),
+      supabase_key: get('supabase_key'),
+    }});
+  }} else if (cat === 'custom') {{
+    document.querySelectorAll('.custom-cred-row').forEach(row => {{
+      const k = row.querySelector('.custom-key').value.trim();
+      const v = row.querySelector('.custom-val').value.trim();
+      if (k) payload[k.toLowerCase()] = v;
+    }});
+  }}
+
+  const res = await fetch('/api/config', {{
+    method: 'POST',
+    headers: {{ 'Content-Type': 'application/json' }},
+    body: JSON.stringify(payload)
+  }});
+
+  const statusEl = document.getElementById('save-status-' + cat);
+  if (res.ok) {{
+    if (statusEl) {{
+      statusEl.style.opacity = '1';
+      setTimeout(() => {{ statusEl.style.opacity = '0'; }}, 2500);
+    }}
   }} else {{
     alert('Failed to save. Check server logs.');
   }}
