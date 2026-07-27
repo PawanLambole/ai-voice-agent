@@ -791,7 +791,7 @@ async def get_dashboard():
     <div class="nav-section" style="margin-top:12px;">Configuration</div>
     <div class="nav-item" onclick="goTo('agent', this)"><span class="icon">🤖</span> Agent Settings</div>
     <div class="nav-item" onclick="goTo('models', this)"><span class="icon">🎙️</span> Models & Voice</div>
-    <div class="nav-item" onclick="goTo('credentials', this)"><span class="icon">🔑</span> API Credentials</div>
+    <div class="nav-item" onclick="goTo('credentials', this); initCustomCreds();"><span class="icon">🔑</span> API Credentials</div>
     <div class="nav-section" style="margin-top:12px;">Data</div>
     <div class="nav-item" onclick="goTo('logs', this); loadLogs();"><span class="icon">📞</span> Call Logs</div>
     <div class="nav-item" onclick="goTo('crm', this); loadCRM();"><span class="icon">👥</span> CRM Contacts</div>
@@ -1102,6 +1102,15 @@ async def get_dashboard():
         <div class="form-group"><label>Supabase URL</label><input type="text" id="supabase_url" value="{config.get('supabase_url', '')}"></div>
         <div class="form-group"><label>Supabase Anon Key</label><input type="password" id="supabase_key" value="{config.get('supabase_key', '')}"></div>
       </div>
+    <div class="section-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div>
+          <div class="section-title" style="margin:0;">Custom API Configurations &amp; Keys</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px;">Add custom API keys or environment settings for integrations</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="addCustomCredRow()">+ Add Custom API Key</button>
+      </div>
+      <div id="custom-cred-list" style="display:flex;flex-direction:column;gap:12px;"></div>
     </div>
     <div class="save-bar">
       <span class="save-status" id="save-status-credentials">✅ Saved!</span>
@@ -1416,6 +1425,11 @@ async function saveConfig(section) {{
       telegram_bot_token: get('telegram_bot_token'), telegram_chat_id: get('telegram_chat_id'),
       supabase_url: get('supabase_url'), supabase_key: get('supabase_key'),
     }});
+    document.querySelectorAll('.custom-cred-row').forEach(row => {{
+      const k = row.querySelector('.custom-key').value.trim();
+      const v = row.querySelector('.custom-val').value.trim();
+      if (k) payload[k.toLowerCase()] = v;
+    }});
   }}
 
   const res = await fetch('/api/config', {{
@@ -1430,6 +1444,56 @@ async function saveConfig(section) {{
   }} else {{
     alert('Failed to save. Check server logs.');
   }}
+}}
+
+function addCustomCredRow(key = '', val = '') {{
+  const container = document.getElementById('custom-cred-list');
+  if (!container) return;
+  if (container.children.length === 1 && !container.children[0].classList.contains('custom-cred-row')) {{
+    container.innerHTML = '';
+  }}
+  const div = document.createElement('div');
+  div.className = 'custom-cred-row';
+  div.style.cssText = 'display:flex;gap:12px;align-items:center;padding:12px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;';
+  div.innerHTML = `
+    <div style="flex:1;">
+      <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px;">Key Name</label>
+      <input type="text" class="custom-key" placeholder="e.g. DEEPGRAM_API_KEY" value="${{key}}" style="width:100%;padding:8px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:monospace;">
+    </div>
+    <div style="flex:2;">
+      <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px;">Credential Value</label>
+      <input type="password" class="custom-val" placeholder="Paste API Key, Token, or Secret" value="${{val}}" style="width:100%;padding:8px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:monospace;">
+    </div>
+    <button class="btn btn-ghost btn-sm" style="color:var(--red);margin-top:18px;padding:8px;" onclick="this.parentElement.remove()" title="Delete">🗑</button>
+  `;
+  container.appendChild(div);
+}}
+
+async function initCustomCreds() {{
+  const container = document.getElementById('custom-cred-list');
+  if (!container) return;
+  try {{
+    const cfg = await fetch('/api/config').then(r => r.json());
+    const standardKeys = new Set([
+      'first_line', 'agent_instructions', 'stt_min_endpointing_delay',
+      'llm_provider', 'llm_model', 'tts_voice', 'tts_language',
+      'livekit_url', 'sip_trunk_id', 'livekit_api_key', 'livekit_api_secret',
+      'groq_api_key', 'openai_api_key', 'anthropic_api_key', 'sarvam_api_key',
+      'cal_api_key', 'cal_event_type_id', 'telegram_bot_token', 'telegram_chat_id',
+      'supabase_url', 'supabase_key'
+    ]);
+    container.innerHTML = '';
+    let count = 0;
+    for (const [k, v] of Object.entries(cfg)) {{
+      if (!standardKeys.has(k.toLowerCase()) && v) {{
+        addCustomCredRow(k.toUpperCase(), v);
+        count++;
+      }}
+    }}
+    if (count === 0) {{
+      container.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px;">No custom credentials added yet. Click <strong>+ Add Custom API Key</strong> to add one.</div>';
+    }}
+  }} catch(e) {{}}
 }}
 
 function onProviderChange() {{
@@ -1731,6 +1795,7 @@ async function deleteKbEntry(id) {{
 
 // ── Boot ────────────────────────────────────────────────────────────────────
 loadDashboard();
+initCustomCreds();
 setTimeout(onProviderChange, 50);
 </script>
 </body>
