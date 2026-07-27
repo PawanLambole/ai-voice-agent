@@ -601,7 +601,9 @@ async def entrypoint(ctx: JobContext):
 
     await session.start(room=ctx.room, agent=agent, room_input_options=room_input)
 
-    # ── Outbound Greeting Delay until Recipient Answers Call ───────────
+    # ── Speak Initial Greeting (Outbound SIP vs Browser Demo) ───────────
+    greeting_text = live_config.get("first_line") or agent._first_line or "Hello ji... Main Rahul bol raha hoon, Kona Kona Interiors se."
+
     if is_outbound:
         logger.info("[OUTBOUND] Waiting for recipient to ANSWER the phone call...")
 
@@ -631,9 +633,13 @@ async def entrypoint(ctx: JobContext):
         answered_p = await wait_for_call_answer()
         if answered_p:
             await asyncio.sleep(0.8)  # Brief pause for audio pipe stability
-            greeting = live_config.get("first_line") or agent._first_line or "Hello ji... Main Rahul bol raha hoon, Kona Kona Interiors se."
-            logger.info(f"[OUTBOUND] Callee answered! Speaking greeting instantly: {greeting}")
-            await session.say(greeting, allow_interruptions=True)
+            logger.info(f"[OUTBOUND] Callee answered! Speaking greeting instantly: {greeting_text}")
+            await session.say(greeting_text, allow_interruptions=True)
+    else:
+        # Browser Demo Call / Inbound Web Call — caller is already connected in browser
+        logger.info(f"[DEMO] Browser call connected. Speaking initial greeting instantly: {greeting_text}")
+        await asyncio.sleep(0.6)  # Brief pause for WebRTC audio track setup
+        await session.say(greeting_text, allow_interruptions=True)
 
     # ── TTS pre-warm (#12) ────────────────────────────────────────────────
     try:
