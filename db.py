@@ -21,8 +21,8 @@ _RETRY_DELAYS = [1.0, 2.0, 4.0]   # seconds — covers transient SSL 525 errors
 
 
 def _is_retryable(err_str: str) -> bool:
-    """True if the error is a transient network or SSL failure worth retrying."""
-    transient = ("525", "ssl", "timeout", "connection", "network", "502", "503", "504")
+    """True if the error is a transient network, DNS or SSL failure worth retrying."""
+    transient = ("525", "ssl", "timeout", "connection", "network", "502", "503", "504", "name or service not known", "gai_error", "getaddrinfo")
     el = err_str.lower()
     return any(k in el for k in transient)
 
@@ -168,19 +168,24 @@ def fetch_bookings() -> list:
     supabase = get_supabase()
     if not supabase:
         return []
-    try:
-        res = (
-            supabase.table("call_logs")
-            .select("id, phone_number, summary, created_at")
-            .ilike("summary", "%Confirmed%")
-            .order("created_at", desc=True)
-            .limit(200)
-            .execute()
-        )
-        return res.data
-    except Exception as e:
-        logger.error(f"Failed to fetch bookings: {e}")
-        return []
+    for attempt in range(_MAX_RETRIES):
+        try:
+            res = (
+                supabase.table("call_logs")
+                .select("id, phone_number, summary, created_at")
+                .ilike("summary", "%Confirmed%")
+                .order("created_at", desc=True)
+                .limit(200)
+                .execute()
+            )
+            return res.data
+        except Exception as e:
+            if _is_retryable(str(e)) and attempt < _MAX_RETRIES - 1:
+                time.sleep(_RETRY_DELAYS[attempt])
+                continue
+            logger.error(f"Failed to fetch bookings: {e}")
+            return []
+    return []
 
 
 # ─── fetch_stats ──────────────────────────────────────────────────────────────
@@ -190,14 +195,19 @@ def fetch_stats() -> dict:
     supabase = get_supabase()
     if not supabase:
         return _empty
-    try:
-        rows = (supabase.table("call_logs").select("duration_seconds, summary").execute()).data or []
-        total = len(rows)
-        bookings = sum(1 for r in rows if "Confirmed" in r.get("summary", ""))
-        durations = [r["duration_seconds"] for r in rows if r.get("duration_seconds")]
-        avg_dur = round(sum(durations) / len(durations)) if durations else 0
-        rate = round((bookings / total) * 100) if total else 0
-        return {"total_calls": total, "total_bookings": bookings, "avg_duration": avg_dur, "booking_rate": rate}
-    except Exception as e:
-        logger.error(f"Failed to fetch stats: {e}")
-        return _empty
+    for attempt in range(_MAX_RETRIES):
+        try:
+            rows = (supabase.table("call_logs").select("duration_seconds, summary").execute()).data or []
+            total = len(rows)
+            bookings = sum(1 for r in rows if "Confirmed" in r.get("summary", ""))
+            durations = [r["duration_seconds"] for r in rows if r.get("duration_seconds")]
+            avg_dur = round(sum(durations) / len(durations)) if durations else 0
+            rate = round((bookings / total) * 100) if total else 0
+            return {"total_calls": total, "total_bookings": bookings, "avg_duration": avg_dur, "booking_rate": rate}
+        except Exception as e:
+            if _is_retryable(str(e)) and attempt < _MAX_RETRIES - 1:
+                time.sleep(_RETRY_DELAYS[attempt])
+                continue
+            logger.error(f"Failed to fetch stats: {e}")
+            return _empty
+    return _empty
