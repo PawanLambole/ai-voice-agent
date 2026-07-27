@@ -644,7 +644,7 @@ async def get_dashboard():
       width: var(--sidebar-w); min-width: var(--sidebar-w);
       background: var(--sidebar); border-right: 1px solid var(--border);
       display: flex; flex-direction: column; padding: 24px 0;
-      position: relative; z-index: 10;
+      position: relative; z-index: 10; overflow-y: auto; max-height: 100vh;
     }}
     .sidebar-brand {{
       padding: 0 20px 24px;
@@ -2123,6 +2123,9 @@ async function deleteKbEntry(id) {{
   try {{
     await fetch('/api/knowledge/' + id, {{ method: 'DELETE' }});
     loadKnowledgeBase();
+  }} catch(e) {{ alert('Failed to delete: ' + e.message); }}
+}}
+
 // ── Dashboard Web Call ──────────────────────────────────────────────────────
 let dashRoom = null;
 async function startDashCall() {{
