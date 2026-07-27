@@ -630,7 +630,7 @@ async def get_dashboard():
     <div class="nav-item" onclick="goTo('crm', this); loadCRM();"><span class="icon">👥</span> CRM Contacts</div>
     <div class="nav-section" style="margin-top:12px;">Calling</div>
     <div class="nav-item" onclick="goTo('outbound', this)"><span class="icon">📲</span> Outbound Calls</div>
-    <div class="nav-item" onclick="goTo('languages', this); initLanguagePage();"><span class="icon">🌐</span> Language Presets</div>
+    <div class="nav-item" onclick="goTo('languages', this); renderLangGrid();"><span class="icon">🌐</span> Language Presets</div>
     <div class="nav-item" onclick="goTo('demo', this); initDemo();"><span class="icon">✨</span> Demo Link</div>
   </div>
   <div class="sidebar-footer">
@@ -974,8 +974,9 @@ async def get_dashboard():
 function goTo(pageId, el) {{
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById('page-' + pageId).classList.add('active');
-  el.classList.add('active');
+  const target = document.getElementById('page-' + pageId);
+  if (target) target.classList.add('active');
+  if (el) el.classList.add('active');
 }}
 
 // ── Stats & Dashboard ───────────────────────────────────────────────────────
