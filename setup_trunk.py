@@ -36,11 +36,11 @@ async def main():
             auth_password=password,
             numbers=[number] if number else [],
         )
-        print("\n✅ SIP Trunk updated successfully!")
+        print("\n[SUCCESS] SIP Trunk updated successfully!")
         print("The 'max auth retry attempts' error should be resolved now.")
         
     except Exception as e:
-        print(f"\n❌ Failed to update trunk: {e}")
+        print(f"\n[ERROR] Failed to update trunk: {e}")
     finally:
         await lkapi.aclose()
 

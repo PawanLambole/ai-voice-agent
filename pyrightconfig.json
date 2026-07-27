@@ -1,0 +1,23 @@
+{
+    "include": [
+        "."
+    ],
+    "exclude": [
+        "**/__pyrefly_virtual__",
+        "**/.venv"
+    ],
+    "venvPath": "d:/local ai voice/InboundAIVoice",
+    "venv": ".venv",
+    "executionEnvironments": [
+        {
+            "root": ".",
+            "pythonVersion": "3.11",
+            "pythonPlatform": "Windows",
+            "extraPaths": [
+                "d:/local ai voice/InboundAIVoice/.venv/Lib/site-packages"
+            ]
+        }
+    ],
+    "reportMissingImports": false,
+    "reportMissingModuleSource": false
+}

@@ -47,6 +47,8 @@ from livekit.agents import (
 )
 from livekit.plugins import openai, sarvam, silero
 
+import db
+
 CONFIG_FILE = "config.json"
 
 # ── Rate limiting (#37) ───────────────────────────────────────────────────────
@@ -252,7 +254,7 @@ class AgentTools(llm.ToolContext):
     ) -> str:
         logger.info(f"[TOOL] check_availability: date={date}")
         try:
-            slots = await get_available_slots(date)
+            slots = get_available_slots(date)
             if not slots:
                 return f"No available slots on {date}. Would you like to check another date?"
             slot_strings = [s.get("start_time", str(s))[-8:][:5] for s in slots[:6]]
@@ -277,7 +279,7 @@ class AgentTools(llm.ToolContext):
         }
         day_name, open_t, close_t = hours[now.weekday()]
         current_time = now.strftime("%H:%M")
-        if open_t is None:
+        if open_t is None or close_t is None:
             return "We are closed on Sundays. Next opening: Monday 10:00 AM IST."
         if open_t <= current_time <= close_t:
             return f"We are OPEN. Today ({day_name}): {open_t}–{close_t} IST."
@@ -291,7 +293,8 @@ class AgentTools(llm.ToolContext):
 class OutboundAssistant(Agent):
 
     def __init__(self, agent_tools: AgentTools, first_line: str = "", live_config: dict | None = None):
-        tools = llm.find_function_tools(agent_tools)
+        from typing import cast, Any
+        tools: Any = llm.find_function_tools(agent_tools)
         self._first_line  = first_line
         self._live_config = live_config or {}
         live_config_loaded = self._live_config
@@ -342,13 +345,17 @@ async def entrypoint(ctx: JobContext):
     caller_phone = "unknown"
 
     # Try metadata first (outbound dispatch)
+    is_outbound = False
     metadata = ctx.job.metadata or ""
     if metadata:
         try:
             meta = json.loads(metadata)
             phone_number = meta.get("phone_number")
-        except Exception:
-            pass
+            if phone_number:
+                is_outbound = True
+                logger.info(f"[OUTBOUND] Target phone number from metadata: {phone_number}")
+        except Exception as e:
+            logger.warning(f"[METADATA] Failed to parse job metadata: {e}")
 
     # Extract from SIP participants
     for identity, participant in ctx.room.remote_participants.items():
@@ -366,6 +373,27 @@ async def entrypoint(ctx: JobContext):
                 phone_number = m.group()
 
     caller_phone = phone_number or "unknown"
+
+    # ── Outbound SIP Dialing ──────────────────────────────────────────────
+    if is_outbound and phone_number:
+        trunk_id = os.getenv("OUTBOUND_TRUNK_ID") or os.getenv("VOBIZ_SIP_TRUNK_ID")
+        if trunk_id:
+            logger.info(f"[OUTBOUND] Dialing {phone_number} via SIP Trunk ({trunk_id})...")
+            try:
+                from livekit.api import CreateSIPParticipantRequest as _SipReq
+                sip_req = _SipReq(
+                    sip_trunk_id=trunk_id,
+                    sip_call_to=phone_number,
+                    room_name=ctx.room.name,
+                    participant_identity=f"sip_{phone_number.replace('+', '')}",
+                    participant_name="Recipient",
+                )
+                await ctx.api.sip.create_sip_participant(sip_req)
+                logger.info(f"[OUTBOUND] SIP call successfully initiated to {phone_number}")
+            except Exception as e:
+                logger.error(f"[OUTBOUND] Failed to create SIP participant for {phone_number}: {e}")
+        else:
+            logger.error("[OUTBOUND] Cannot dial: OUTBOUND_TRUNK_ID / VOBIZ_SIP_TRUNK_ID missing in .env")
 
     # ── Rate limiting (#37) ───────────────────────────────────────────────
     if is_rate_limited(caller_phone):
@@ -406,7 +434,7 @@ async def entrypoint(ctx: JobContext):
                         .limit(1)
                         .execute())
             if result.data:
-                last = result.data[0]
+                last: dict = result.data[0]  # type: ignore[assignment]
                 return f"\n\n[CALLER HISTORY: Last call {last['created_at'][:10]}. Summary: {last['summary']}]"
         except Exception as e:
             logger.warning(f"[MEMORY] Could not load history: {e}")
@@ -428,8 +456,11 @@ async def entrypoint(ctx: JobContext):
 
     # ── Build LLM (#8 Groq support) ───────────────────────────────────────
     if llm_provider == "groq":
-        agent_llm = openai.LLM.with_groq(
+        _groq_key = os.environ.get("GROQ_API_KEY", "")
+        agent_llm = openai.LLM(
             model=llm_model or "llama-3.3-70b-versatile",
+            base_url="https://api.groq.com/openai/v1",
+            api_key=_groq_key,
             max_completion_tokens=120,
         )
         logger.info(f"[LLM] Using Groq: {llm_model}")
@@ -548,8 +579,11 @@ async def entrypoint(ctx: JobContext):
 
     # ── TTS pre-warm (#12) ────────────────────────────────────────────────
     try:
-        await session.tts.prewarm()
-        logger.info("[TTS] Pre-warmed successfully")
+        if session.tts is not None and hasattr(session.tts, "prewarm"):
+            res = session.tts.prewarm()
+            if asyncio.iscoroutine(res):
+                await res
+            logger.info("[TTS] Pre-warmed successfully")
     except Exception as e:
         logger.debug(f"[TTS] Pre-warm skipped: {e}")
 
@@ -598,7 +632,7 @@ async def entrypoint(ctx: JobContext):
                     "phone":       caller_phone,
                     "caller_name": caller_name,
                     "status":      status,
-                    "last_updated": datetime.utcnow().isoformat(),
+                    "last_updated": datetime.now(pytz.utc).isoformat(),
                 }).execute()
         except Exception as e:
             logger.debug(f"[ACTIVE-CALL] {e}")
@@ -620,18 +654,16 @@ async def entrypoint(ctx: JobContext):
             logger.debug(f"[TRANSCRIPT-STREAM] {e}")
 
     # ── Session event handlers ────────────────────────────────────────────
-    @session.on("agent_speech_started")
-    def _agent_speech_started(ev):
+    @session.on("agent_state_changed")
+    def _agent_state_changed(ev):
         global agent_is_speaking
-        agent_is_speaking = True
+        # AgentState values: 'listening', 'thinking', 'speaking'
+        state = getattr(ev, "state", None) or getattr(ev, "new_state", None)
+        if state is not None:
+            agent_is_speaking = str(state) in ("speaking", "AgentState.SPEAKING")
 
-    @session.on("agent_speech_finished")
-    def _agent_speech_finished(ev):
-        global agent_is_speaking
-        agent_is_speaking = False
-
-    # Interrupt logging (#30)
-    @session.on("agent_speech_interrupted")
+    # Interrupt logging (#30) — use agent_false_interruption as closest proxy
+    @session.on("agent_false_interruption")
     def _on_interrupted(ev):
         nonlocal interrupt_count
         interrupt_count += 1
@@ -643,12 +675,17 @@ async def entrypoint(ctx: JobContext):
         "haan", "han", "theek", "theek hai", "accha", "ji", "ha",
     }
 
-    @session.on("user_speech_committed")
+    @session.on("user_input_transcribed")
     def on_user_speech_committed(ev):
         nonlocal turn_count
         global agent_is_speaking
 
-        transcript = ev.user_transcript.strip()
+        # Support both old and new event field names
+        transcript = (
+            getattr(ev, "user_transcript", None)
+            or getattr(ev, "transcript", None)
+            or ""
+        ).strip()
         transcript_lower = transcript.lower().rstrip(".")
 
         if agent_is_speaking:
@@ -668,11 +705,11 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"[TRANSCRIPT] Turn {turn_count}/{max_turns}: '{transcript}'")
         if turn_count >= max_turns:
             logger.info(f"[LIMIT] Reached {max_turns} turns — wrapping up")
-            asyncio.create_task(
-                session.generate_reply(
+            async def _wrap_up():
+                await session.generate_reply(
                     instructions="Politely wrap up: thank the caller, say they can call back anytime, and say a warm goodbye."
                 )
-            )
+            asyncio.create_task(_wrap_up())
 
     @ctx.room.on("participant_disconnected")
     def on_participant_disconnected(participant):
@@ -706,7 +743,7 @@ async def entrypoint(ctx: JobContext):
                     caller_name=intent["caller_name"],
                     caller_phone=intent["caller_phone"],
                     booking_time_iso=intent["start_time"],
-                    booking_id=result.get("booking_id"),
+                    booking_id=result.get("booking_id") or "",
                     notes=intent["notes"],
                     tts_voice=tts_voice,
                     ai_summary="",
@@ -734,7 +771,7 @@ async def entrypoint(ctx: JobContext):
                 if getattr(msg, "role", None) in ("user", "assistant"):
                     content = getattr(msg, "content", "")
                     if isinstance(content, list):
-                        content = " ".join(str(c) for c in content if isinstance(c, str))
+                        content = " ".join(str(c) for c in content if isinstance(c, str))  # type: ignore[assignment]
                     lines.append(f"[{msg.role.upper()}] {content}")
             transcript_text = "\n".join(lines)
         except Exception as e:
@@ -752,7 +789,8 @@ async def entrypoint(ctx: JobContext):
                     messages=[{"role":"user","content":
                         f"Classify this call as one word: positive, neutral, negative, or frustrated.\n\n{transcript_text[:800]}"}]
                 )
-                sentiment = resp.choices[0].message.content.strip().lower()
+                _raw = resp.choices[0].message.content or ""
+                sentiment = _raw.strip().lower()
                 logger.info(f"[SENTIMENT] {sentiment}")
             except Exception as e:
                 logger.warning(f"[SENTIMENT] Failed: {e}")
@@ -836,7 +874,10 @@ async def entrypoint(ctx: JobContext):
             interrupt_count=interrupt_count,
         )
 
-    ctx.add_shutdown_callback(unified_shutdown_hook)
+    async def _shutdown_no_arg() -> None:
+        await unified_shutdown_hook(ctx)
+
+    ctx.add_shutdown_callback(_shutdown_no_arg)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
