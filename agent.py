@@ -497,8 +497,8 @@ async def entrypoint(ctx: JobContext):
         )
         logger.info(f"[LLM] Using Claude via Anthropic: {llm_model}")
     else:
-        agent_llm = openai.LLM(model=llm_model, max_completion_tokens=120)  # cap tokens (#7)
-        logger.info(f"[LLM] Using OpenAI: {llm_model}")
+        agent_llm = openai.LLM(model=llm_model or "gpt-4o-mini", max_completion_tokens=120)  # cap tokens (#7)
+        logger.info(f"[LLM] Using OpenAI: {llm_model or 'gpt-4o-mini'}")
 
     # ── Build STT (#1 16kHz, #20 auto-detect, #9 Deepgram) ──────────────
     if stt_provider == "deepgram":
