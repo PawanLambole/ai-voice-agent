@@ -641,38 +641,49 @@ async def get_dashboard():
 
     /* ── Sidebar ── */
     #sidebar {{
-      width: var(--sidebar-w); min-width: var(--sidebar-w);
-      background: var(--sidebar); border-right: 1px solid var(--border);
-      display: flex; flex-direction: column; padding: 24px 0;
-      position: relative; z-index: 10; overflow-y: auto; max-height: 100vh;
+      width: 250px; min-width: 250px;
+      background: #111520; border-right: 1px solid #1e2638;
+      display: flex; flex-direction: column; height: 100vh;
+      position: relative; z-index: 10; overflow: hidden;
     }}
     .sidebar-brand {{
-      padding: 0 20px 24px;
-      border-bottom: 1px solid var(--border);
-      display: flex; align-items: center; gap: 10px;
+      padding: 18px 20px;
+      border-bottom: 1px solid #1e2638;
+      display: flex; align-items: center; gap: 12px;
+      flex-shrink: 0; background: rgba(0,0,0,0.2);
     }}
     .sidebar-brand .logo {{
-      width: 32px; height: 32px; background: var(--accent);
-      border-radius: 8px; display: flex; align-items: center; justify-content: center;
-      font-size: 16px;
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border-radius: 10px; display: flex; align-items: center; justify-content: center;
+      font-size: 18px; box-shadow: 0 4px 12px rgba(99,102,241,0.35);
     }}
-    .sidebar-brand .brand-text {{ font-weight: 700; font-size: 14px; line-height: 1.2; }}
-    .sidebar-brand .brand-sub {{ font-size: 10px; color: var(--muted); }}
-    .sidebar-nav {{ padding: 16px 0; flex: 1; }}
-    .nav-section {{ padding: 8px 16px 4px; font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }}
+    .sidebar-brand .brand-text {{ font-weight: 700; font-size: 14.5px; color: #f8fafc; letter-spacing: -0.01em; }}
+    .sidebar-brand .brand-sub {{ font-size: 11px; color: #64748b; font-weight: 500; margin-top: 1px; }}
+    .sidebar-nav {{ padding: 12px 10px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }}
+    .sidebar-nav::-webkit-scrollbar {{ width: 4px; }}
+    .sidebar-nav::-webkit-scrollbar-thumb {{ background: rgba(255,255,255,0.08); border-radius: 4px; }}
+    .nav-section {{ padding: 14px 12px 6px; font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; }}
     .nav-item {{
       display: flex; align-items: center; gap: 10px;
-      padding: 10px 20px; cursor: pointer; font-size: 13.5px; font-weight: 500;
-      color: var(--muted); border-left: 3px solid transparent;
-      transition: all 0.15s; user-select: none;
+      padding: 9px 12px; cursor: pointer; font-size: 13px; font-weight: 500;
+      color: #94a3b8; border-radius: 8px;
+      transition: all 0.15s ease; user-select: none; margin: 1px 0;
     }}
-    .nav-item:hover {{ color: var(--text); background: rgba(255,255,255,0.04); }}
-    .nav-item.active {{ color: var(--accent); border-left-color: var(--accent); background: var(--accent-glow); }}
-    .nav-item .icon {{ font-size: 16px; width: 20px; text-align: center; }}
+    .nav-item:hover {{ color: #f8fafc; background: rgba(255,255,255,0.05); }}
+    .nav-item.active {{
+      color: #ffffff; font-weight: 600;
+      background: linear-gradient(90deg, rgba(99,102,241,0.22) 0%, rgba(99,102,241,0.08) 100%);
+      border: 1px solid rgba(99,102,241,0.3);
+      box-shadow: 0 2px 8px rgba(99,102,241,0.15);
+    }}
+    .nav-item .icon {{ font-size: 15px; width: 22px; display: flex; align-items: center; justify-content: center; }}
     .sidebar-footer {{
-      padding: 16px 20px;
-      border-top: 1px solid var(--border);
-      font-size: 11px; color: var(--muted);
+      padding: 14px 18px;
+      border-top: 1px solid #1e2638;
+      font-size: 11.5px; color: #94a3b8; font-weight: 500;
+      flex-shrink: 0; background: #0e111a;
+      display: flex; align-items: center; justify-content: space-between;
     }}
     .status-dot {{
       display: inline-block; width: 7px; height: 7px; border-radius: 50%;
