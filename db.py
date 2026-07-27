@@ -197,10 +197,11 @@ def fetch_stats() -> dict:
         return _empty
     for attempt in range(_MAX_RETRIES):
         try:
-            rows = (supabase.table("call_logs").select("duration_seconds, summary").execute()).data or []
+            raw_rows = (supabase.table("call_logs").select("duration_seconds, summary").execute()).data or []
+            rows = [r for r in raw_rows if isinstance(r, dict)]
             total = len(rows)
-            bookings = sum(1 for r in rows if "Confirmed" in r.get("summary", ""))
-            durations = [r["duration_seconds"] for r in rows if r.get("duration_seconds")]
+            bookings = sum(1 for r in rows if "Confirmed" in str(r.get("summary") or ""))
+            durations = [int(r["duration_seconds"]) for r in rows if isinstance(r.get("duration_seconds"), (int, float))]
             avg_dur = round(sum(durations) / len(durations)) if durations else 0
             rate = round((bookings / total) * 100) if total else 0
             return {"total_calls": total, "total_bookings": bookings, "avg_duration": avg_dur, "booking_rate": rate}
