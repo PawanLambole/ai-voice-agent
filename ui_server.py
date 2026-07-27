@@ -86,6 +86,16 @@ def read_config() -> dict:
     except Exception as e:
         logger.debug(f"DB config load skipped: {e}")
 
+    # Ensure provider & model consistency (e.g. if provider is Groq, model shouldn't be gpt-*)
+    provider = base.get("llm_provider", "groq" if os.getenv("GROQ_API_KEY") else "openai")
+    model = base.get("llm_model", "")
+    if provider == "groq" and (not model or model.startswith("gpt-") or model.startswith("claude-")):
+        base["llm_model"] = "llama-3.3-70b-versatile"
+    elif provider == "openai" and (not model or not model.startswith("gpt-")):
+        base["llm_model"] = "gpt-4o-mini"
+    elif provider == "claude" and (not model or not model.startswith("claude-")):
+        base["llm_model"] = "claude-haiku-3-5-latest"
+
     return base
 
 
@@ -851,7 +861,7 @@ async def get_dashboard():
       <div class="form-row" style="max-width:720px;">
         <div class="form-group">
           <label>LLM Provider</label>
-          <select id="llm_provider">
+          <select id="llm_provider" onchange="onProviderChange()">
             <option value="groq" {sel('llm_provider','groq')}>Groq (Ultra-Fast &amp; High Quality)</option>
             <option value="openai" {sel('llm_provider','openai')}>OpenAI</option>
             <option value="claude" {sel('llm_provider','claude')}>Claude (Anthropic)</option>
@@ -1395,6 +1405,20 @@ async function saveConfig(section) {{
   }} else {{
     alert('Failed to save. Check server logs.');
   }}
+}}
+
+function onProviderChange() {{
+  const provider = document.getElementById('llm_provider').value;
+  const modelSelect = document.getElementById('llm_model');
+  if (!modelSelect) return;
+
+  const defaults = {{
+    groq: 'llama-3.3-70b-versatile',
+    openai: 'gpt-4o-mini',
+    claude: 'claude-haiku-3-5-latest'
+  }};
+
+  modelSelect.value = defaults[provider] || 'llama-3.3-70b-versatile';
 }}
 
 
