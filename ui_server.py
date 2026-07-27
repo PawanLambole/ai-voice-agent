@@ -536,6 +536,47 @@ async def get_dashboard():
     def sel(key, val):
         return "selected" if config.get(key) == val else ""
 
+    has_groq = bool(config.get("groq_api_key") or os.getenv("GROQ_API_KEY"))
+    has_openai = bool(config.get("openai_api_key") or os.getenv("OPENAI_API_KEY"))
+    has_claude = bool(config.get("anthropic_api_key") or os.getenv("ANTHROPIC_API_KEY"))
+
+    # Fallback if no keys set at all: show groq and openai
+    if not (has_groq or has_openai or has_claude):
+        has_groq = True
+        has_openai = True
+
+    provider_options = []
+    if has_groq:
+        provider_options.append(f'<option value="groq" {sel("llm_provider","groq")}>Groq (Ultra-Fast &amp; High Quality)</option>')
+    if has_openai:
+        provider_options.append(f'<option value="openai" {sel("llm_provider","openai")}>OpenAI</option>')
+    if has_claude:
+        provider_options.append(f'<option value="claude" {sel("llm_provider","claude")}>Claude (Anthropic)</option>')
+
+    provider_options_html = "\n".join(provider_options)
+
+    model_optgroups = []
+    if has_groq:
+        model_optgroups.append(f'''<optgroup label="Groq Models (Recommended)">
+              <option value="llama-3.3-70b-versatile" {sel('llm_model','llama-3.3-70b-versatile')}>llama-3.3-70b-versatile (Recommended)</option>
+              <option value="llama-3.1-8b-instant" {sel('llm_model','llama-3.1-8b-instant')}>llama-3.1-8b-instant (Ultra-Fast)</option>
+              <option value="mixtral-8x7b-32768" {sel('llm_model','mixtral-8x7b-32768')}>mixtral-8x7b-32768</option>
+              <option value="gemma2-9b-it" {sel('llm_model','gemma2-9b-it')}>gemma2-9b-it</option>
+            </optgroup>''')
+    if has_openai:
+        model_optgroups.append(f'''<optgroup label="OpenAI Models">
+              <option value="gpt-4o-mini" {sel('llm_model','gpt-4o-mini')}>gpt-4o-mini — Fast &amp; Cheap</option>
+              <option value="gpt-4o" {sel('llm_model','gpt-4o')}>gpt-4o — High Intelligence</option>
+              <option value="gpt-4.1-mini" {sel('llm_model','gpt-4.1-mini')}>gpt-4.1-mini — Fast &amp; Latest</option>
+            </optgroup>''')
+    if has_claude:
+        model_optgroups.append(f'''<optgroup label="Claude (Anthropic) Models">
+              <option value="claude-haiku-3-5-latest" {sel('llm_model','claude-haiku-3-5-latest')}>claude-haiku-3-5-latest — Ultra-Fast</option>
+              <option value="claude-3-5-sonnet-latest" {sel('llm_model','claude-3-5-sonnet-latest')}>claude-3-5-sonnet-latest — Most Capable</option>
+            </optgroup>''')
+
+    model_optgroups_html = "\n".join(model_optgroups)
+
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -862,29 +903,13 @@ async def get_dashboard():
         <div class="form-group">
           <label>LLM Provider</label>
           <select id="llm_provider" onchange="onProviderChange()">
-            <option value="groq" {sel('llm_provider','groq')}>Groq (Ultra-Fast &amp; High Quality)</option>
-            <option value="openai" {sel('llm_provider','openai')}>OpenAI</option>
-            <option value="claude" {sel('llm_provider','claude')}>Claude (Anthropic)</option>
+{provider_options_html}
           </select>
         </div>
         <div class="form-group">
           <label>Model</label>
           <select id="llm_model">
-            <optgroup label="Groq Models (Recommended)">
-              <option value="llama-3.3-70b-versatile" {sel('llm_model','llama-3.3-70b-versatile')}>llama-3.3-70b-versatile (Recommended)</option>
-              <option value="llama-3.1-8b-instant" {sel('llm_model','llama-3.1-8b-instant')}>llama-3.1-8b-instant (Ultra-Fast)</option>
-              <option value="mixtral-8x7b-32768" {sel('llm_model','mixtral-8x7b-32768')}>mixtral-8x7b-32768</option>
-              <option value="gemma2-9b-it" {sel('llm_model','gemma2-9b-it')}>gemma2-9b-it</option>
-            </optgroup>
-            <optgroup label="OpenAI Models">
-              <option value="gpt-4o-mini" {sel('llm_model','gpt-4o-mini')}>gpt-4o-mini — Fast &amp; Cheap</option>
-              <option value="gpt-4o" {sel('llm_model','gpt-4o')}>gpt-4o — High Intelligence</option>
-              <option value="gpt-4.1-mini" {sel('llm_model','gpt-4.1-mini')}>gpt-4.1-mini — Fast &amp; Latest</option>
-            </optgroup>
-            <optgroup label="Claude (Anthropic) Models">
-              <option value="claude-haiku-3-5-latest" {sel('llm_model','claude-haiku-3-5-latest')}>claude-haiku-3-5-latest — Ultra-Fast</option>
-              <option value="claude-3-5-sonnet-latest" {sel('llm_model','claude-3-5-sonnet-latest')}>claude-3-5-sonnet-latest — Most Capable</option>
-            </optgroup>
+{model_optgroups_html}
           </select>
         </div>
       </div>
@@ -1408,17 +1433,36 @@ async function saveConfig(section) {{
 }}
 
 function onProviderChange() {{
-  const provider = document.getElementById('llm_provider').value;
+  const providerEl = document.getElementById('llm_provider');
   const modelSelect = document.getElementById('llm_model');
-  if (!modelSelect) return;
+  if (!providerEl || !modelSelect) return;
+  const provider = providerEl.value;
 
-  const defaults = {{
-    groq: 'llama-3.3-70b-versatile',
-    openai: 'gpt-4o-mini',
-    claude: 'claude-haiku-3-5-latest'
-  }};
+  const optgroups = modelSelect.querySelectorAll('optgroup');
+  let matchFound = false;
 
-  modelSelect.value = defaults[provider] || 'llama-3.3-70b-versatile';
+  optgroups.forEach(group => {{
+    const label = (group.label || '').toLowerCase();
+    const isMatch = (provider === 'groq' && label.includes('groq')) ||
+                    (provider === 'openai' && label.includes('openai')) ||
+                    (provider === 'claude' && label.includes('claude'));
+
+    group.style.display = isMatch ? '' : 'none';
+    group.disabled = !isMatch;
+    if (isMatch) {{
+      const currentOpt = group.querySelector(`option[value="${{modelSelect.value}}"]`);
+      if (currentOpt) matchFound = true;
+    }}
+  }});
+
+  if (!matchFound) {{
+    const defaults = {{
+      groq: 'llama-3.3-70b-versatile',
+      openai: 'gpt-4o-mini',
+      claude: 'claude-haiku-3-5-latest'
+    }};
+    modelSelect.value = defaults[provider] || 'llama-3.3-70b-versatile';
+  }}
 }}
 
 
@@ -1687,6 +1731,7 @@ async function deleteKbEntry(id) {{
 
 // ── Boot ────────────────────────────────────────────────────────────────────
 loadDashboard();
+setTimeout(onProviderChange, 50);
 </script>
 </body>
 </html>"""
