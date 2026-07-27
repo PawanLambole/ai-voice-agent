@@ -516,7 +516,7 @@ async def entrypoint(ctx: JobContext):
             agent_stt = sarvam.STT(
                 language=stt_language,
                 model="saaras:v3",
-                mode="translate",
+                mode="transcribe",
                 flush_signal=True,
                 sample_rate=16000,
             )
@@ -524,7 +524,7 @@ async def entrypoint(ctx: JobContext):
         agent_stt = sarvam.STT(
             language=stt_language,      # "hi-IN" default
             model="saaras:v3",
-            mode="translate",
+            mode="transcribe",
             flush_signal=True,
             sample_rate=16000,          # force 16kHz (#1)
         )
@@ -634,12 +634,12 @@ async def entrypoint(ctx: JobContext):
         if answered_p:
             await asyncio.sleep(0.8)  # Brief pause for audio pipe stability
             logger.info(f"[OUTBOUND] Callee answered! Speaking greeting instantly: {greeting_text}")
-            await session.say(greeting_text, allow_interruptions=True)
+            await session.generate_reply(instructions=f"Say exactly this phrase: '{greeting_text}'")
     else:
         # Browser Demo Call / Inbound Web Call — caller is already connected in browser
         logger.info(f"[DEMO] Browser call connected. Speaking initial greeting instantly: {greeting_text}")
         await asyncio.sleep(0.6)  # Brief pause for WebRTC audio track setup
-        await session.say(greeting_text, allow_interruptions=True)
+        await session.generate_reply(instructions=f"Say exactly this phrase: '{greeting_text}'")
 
     # ── TTS pre-warm (#12) ────────────────────────────────────────────────
     try:
