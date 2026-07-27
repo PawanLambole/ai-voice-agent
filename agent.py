@@ -888,4 +888,5 @@ if __name__ == "__main__":
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
         agent_name="outbound-caller",
+        initialize_process_timeout=30.0,
     ))
