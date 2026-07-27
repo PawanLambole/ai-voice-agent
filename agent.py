@@ -292,11 +292,12 @@ class AgentTools(llm.ToolContext):
 
 class OutboundAssistant(Agent):
 
-    def __init__(self, agent_tools: AgentTools, first_line: str = "", live_config: dict | None = None):
+    def __init__(self, agent_tools: AgentTools, first_line: str = "", live_config: dict | None = None, is_outbound: bool = False):
         from typing import cast, Any
         tools: Any = llm.find_function_tools(agent_tools)
-        self._first_line  = first_line
-        self._live_config = live_config or {}
+        self._first_line   = first_line
+        self._live_config  = live_config or {}
+        self._is_outbound  = is_outbound
         live_config_loaded = self._live_config
 
         base_instructions = live_config_loaded.get("agent_instructions", "")
@@ -324,16 +325,14 @@ class OutboundAssistant(Agent):
         super().__init__(instructions=final_instructions, tools=tools)
 
     async def on_enter(self):
-        greeting = self._live_config.get(
-            "first_line",
-            self._first_line or (
-                "Namaste! This is Aryan from RapidX AI — we help businesses automate with AI. "
-                "Hmm, may I ask what kind of business you run?"
+        if not self._is_outbound:
+            greeting = self._live_config.get(
+                "first_line",
+                self._first_line or "Hello ji... Main Rahul bol raha hoon, Kona Kona Interiors se."
             )
-        )
-        await self.session.generate_reply(
-            instructions=f"Say exactly this phrase: '{greeting}'"
-        )
+            await self.session.generate_reply(
+                instructions=f"Say exactly this phrase: '{greeting}'"
+            )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -430,7 +429,9 @@ async def entrypoint(ctx: JobContext):
     tts_language  = live_config.get("tts_language", "hi-IN")
     tts_provider  = live_config.get("tts_provider", "sarvam")
     stt_provider  = live_config.get("stt_provider", "sarvam")
-    stt_language  = live_config.get("stt_language", "unknown")  # auto-detect (#20)
+    stt_language  = live_config.get("stt_language")
+    if not stt_language or stt_language == "unknown":
+        stt_language = "hi-IN"
     max_turns     = live_config.get("max_turns", 25)
 
     # Override OS env vars from UI config
@@ -521,13 +522,13 @@ async def entrypoint(ctx: JobContext):
             )
     else:
         agent_stt = sarvam.STT(
-            language=stt_language,      # "unknown" = auto-detect (#20)
+            language=stt_language,      # "hi-IN" default
             model="saaras:v3",
             mode="translate",
             flush_signal=True,
             sample_rate=16000,          # force 16kHz (#1)
         )
-        logger.info("[STT] Using Sarvam Saaras v3")
+        logger.info(f"[STT] Using Sarvam Saaras v3 — language: {stt_language}")
 
     # ── Build TTS (#2 24kHz, #10 ElevenLabs) ────────────────────────────
     if tts_provider == "elevenlabs":
@@ -570,6 +571,7 @@ async def entrypoint(ctx: JobContext):
         agent_tools=agent_tools,
         first_line=live_config.get("first_line", ""),
         live_config=live_config,
+        is_outbound=is_outbound,
     )
 
     # ── Build session (#3 noise cancellation attempted) ───────────────────
@@ -598,6 +600,33 @@ async def entrypoint(ctx: JobContext):
     )
 
     await session.start(room=ctx.room, agent=agent, room_input_options=room_input)
+
+    # ── Outbound Greeting Delay until Recipient Answers Call ───────────
+    if is_outbound:
+        remote_p = None
+        if len(ctx.room.remote_participants) > 0:
+            remote_p = list(ctx.room.remote_participants.values())[0]
+        else:
+            logger.info("[OUTBOUND] Waiting for recipient to answer the phone call...")
+            loop = asyncio.get_running_loop()
+            fut = loop.create_future()
+
+            def on_p_connected(participant):
+                if not fut.done():
+                    fut.set_result(participant)
+
+            ctx.room.on("participant_connected", on_p_connected)
+            try:
+                remote_p = await asyncio.wait_for(fut, timeout=45.0)
+                logger.info(f"[OUTBOUND] Recipient answered phone: {remote_p.identity}")
+            except asyncio.TimeoutError:
+                logger.warning("[OUTBOUND] Outbound phone call timed out (unanswered)")
+
+        if remote_p:
+            await asyncio.sleep(1.2)  # Pause to ensure audio track is open
+            greeting = live_config.get("first_line") or agent._first_line or "Hello ji... Main Rahul bol raha hoon, Kona Kona Interiors se."
+            logger.info(f"[OUTBOUND] Speaking initial greeting to caller: {greeting}")
+            await session.generate_reply(instructions=f"Say exactly this phrase: '{greeting}'")
 
     # ── TTS pre-warm (#12) ────────────────────────────────────────────────
     try:
