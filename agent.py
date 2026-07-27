@@ -353,16 +353,20 @@ async def entrypoint(ctx: JobContext):
     caller_name  = ""
     caller_phone = "unknown"
 
-    # Try metadata first (outbound dispatch)
+    # Try metadata first (outbound dispatch vs demo call)
     is_outbound = False
     metadata = ctx.job.metadata or ""
     if metadata:
         try:
             meta = json.loads(metadata)
-            phone_number = meta.get("phone_number")
-            if phone_number:
+            is_demo = meta.get("is_demo", False)
+            phone = meta.get("phone_number")
+            if phone and phone.startswith("+") and not is_demo:
                 is_outbound = True
+                phone_number = phone
                 logger.info(f"[OUTBOUND] Target phone number from metadata: {phone_number}")
+            elif is_demo:
+                logger.info(f"[DEMO] Browser demo call detected for room {ctx.room.name}")
         except Exception as e:
             logger.warning(f"[METADATA] Failed to parse job metadata: {e}")
 
