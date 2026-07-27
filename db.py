@@ -116,6 +116,127 @@ def save_config_to_db(data: dict) -> bool:
     return False
 
 
+# ─── knowledge_base ───────────────────────────────────────────────────────────
+
+def fetch_knowledge_base(active_only: bool = False) -> list:
+    """
+    Fetch all knowledge base entries, ordered by sort_order then created_at.
+    If active_only=True, returns only entries with is_active=True.
+    Returns [] if DB not configured or table missing.
+    """
+    supabase = get_supabase()
+    if not supabase:
+        return []
+    for attempt in range(_MAX_RETRIES):
+        try:
+            q = supabase.table("knowledge_base").select("*").order("sort_order").order("created_at")
+            if active_only:
+                q = q.eq("is_active", True)
+            res = q.execute()
+            return res.data or []
+        except Exception as e:
+            err = str(e)
+            if _is_retryable(err) and attempt < _MAX_RETRIES - 1:
+                time.sleep(_RETRY_DELAYS[attempt])
+                continue
+            if "does not exist" in err.lower() or "relation" in err.lower():
+                logger.info("knowledge_base table not found — run supabase_migration_knowledge_base.sql first.")
+            else:
+                logger.warning(f"Could not fetch knowledge base: {err[:120]}")
+            return []
+    return []
+
+
+def get_kb_for_prompt() -> str:
+    """
+    Returns all active knowledge base entries formatted as a single
+    [KNOWLEDGE BASE] block ready to be injected into the system prompt.
+    Returns empty string if no entries.
+    """
+    entries = fetch_knowledge_base(active_only=True)
+    if not entries:
+        return ""
+    lines = ["\n\n[KNOWLEDGE BASE]\nUse the following information to answer caller questions accurately:\n"]
+    for entry in entries:
+        if isinstance(entry, dict):
+            title   = entry.get("title", "").strip()
+            content = entry.get("content", "").strip()
+            if content:
+                lines.append(f"## {title}\n{content}" if title else content)
+    if len(lines) <= 1:
+        return ""
+    return "\n\n".join(lines)
+
+
+def add_knowledge_entry(title: str, content: str, sort_order: int = 0) -> dict:
+    """Insert a new knowledge base entry. Returns the created row or an error dict."""
+    supabase = get_supabase()
+    if not supabase:
+        return {"success": False, "message": "Supabase not configured"}
+    for attempt in range(_MAX_RETRIES):
+        try:
+            res = supabase.table("knowledge_base").insert({
+                "title": title,
+                "content": content,
+                "is_active": True,
+                "sort_order": sort_order,
+            }).execute()
+            row = res.data[0] if res.data else {}
+            logger.info(f"Knowledge base entry added: '{title}'")
+            return {"success": True, "data": row}
+        except Exception as e:
+            err = str(e)
+            if _is_retryable(err) and attempt < _MAX_RETRIES - 1:
+                time.sleep(_RETRY_DELAYS[attempt])
+                continue
+            logger.error(f"Failed to add knowledge entry: {err[:120]}")
+            return {"success": False, "message": err}
+    return {"success": False, "message": "Max retries exceeded"}
+
+
+def update_knowledge_entry(entry_id: str, updates: dict) -> dict:
+    """Update an existing knowledge base entry by UUID. Allowed fields: title, content, is_active, sort_order."""
+    allowed = {"title", "content", "is_active", "sort_order"}
+    safe_updates = {k: v for k, v in updates.items() if k in allowed}
+    if not safe_updates:
+        return {"success": False, "message": "No valid fields to update"}
+    supabase = get_supabase()
+    if not supabase:
+        return {"success": False, "message": "Supabase not configured"}
+    for attempt in range(_MAX_RETRIES):
+        try:
+            res = supabase.table("knowledge_base").update(safe_updates).eq("id", entry_id).execute()
+            return {"success": True, "data": res.data}
+        except Exception as e:
+            err = str(e)
+            if _is_retryable(err) and attempt < _MAX_RETRIES - 1:
+                time.sleep(_RETRY_DELAYS[attempt])
+                continue
+            logger.error(f"Failed to update knowledge entry {entry_id}: {err[:120]}")
+            return {"success": False, "message": err}
+    return {"success": False, "message": "Max retries exceeded"}
+
+
+def delete_knowledge_entry(entry_id: str) -> dict:
+    """Permanently delete a knowledge base entry by UUID."""
+    supabase = get_supabase()
+    if not supabase:
+        return {"success": False, "message": "Supabase not configured"}
+    for attempt in range(_MAX_RETRIES):
+        try:
+            supabase.table("knowledge_base").delete().eq("id", entry_id).execute()
+            logger.info(f"Knowledge base entry deleted: {entry_id}")
+            return {"success": True}
+        except Exception as e:
+            err = str(e)
+            if _is_retryable(err) and attempt < _MAX_RETRIES - 1:
+                time.sleep(_RETRY_DELAYS[attempt])
+                continue
+            logger.error(f"Failed to delete knowledge entry {entry_id}: {err[:120]}")
+            return {"success": False, "message": err}
+    return {"success": False, "message": "Max retries exceeded"}
+
+
 # ─── save_call_log ────────────────────────────────────────────────────────────
 
 def save_call_log(

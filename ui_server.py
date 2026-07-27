@@ -237,6 +237,48 @@ async def api_get_contacts():
         return []
 
 
+# ── Knowledge Base API ─────────────────────────────────────────────────────────
+
+@app.get("/api/knowledge")
+async def api_get_knowledge():
+    """List all knowledge base entries (active and inactive)."""
+    ensure_supabase_env()
+    import db
+    try:
+        return db.fetch_knowledge_base(active_only=False)
+    except Exception as e:
+        logger.error(f"Error fetching knowledge base: {e}")
+        return []
+
+@app.post("/api/knowledge")
+async def api_add_knowledge(request: Request):
+    """Add a new knowledge base entry."""
+    ensure_supabase_env()
+    import db
+    data = await request.json()
+    title      = str(data.get("title", "")).strip()
+    content    = str(data.get("content", "")).strip()
+    sort_order = int(data.get("sort_order", 0))
+    if not content:
+        return {"success": False, "message": "Content is required"}
+    return db.add_knowledge_entry(title=title, content=content, sort_order=sort_order)
+
+@app.put("/api/knowledge/{entry_id}")
+async def api_update_knowledge(entry_id: str, request: Request):
+    """Update a knowledge base entry."""
+    ensure_supabase_env()
+    import db
+    updates = await request.json()
+    return db.update_knowledge_entry(entry_id=entry_id, updates=updates)
+
+@app.delete("/api/knowledge/{entry_id}")
+async def api_delete_knowledge(entry_id: str):
+    """Delete a knowledge base entry."""
+    ensure_supabase_env()
+    import db
+    return db.delete_knowledge_entry(entry_id=entry_id)
+
+
 DEMO_PAGE_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -703,6 +745,7 @@ async def get_dashboard():
     <div class="nav-section" style="margin-top:12px;">Calling</div>
     <div class="nav-item" onclick="goTo('outbound', this)"><span class="icon">📲</span> Outbound Calls</div>
     <div class="nav-item" onclick="goTo('languages', this); renderLangGrid();"><span class="icon">🌐</span> Language Presets</div>
+    <div class="nav-item" onclick="goTo('knowledge', this); loadKnowledgeBase();"><span class="icon">🧠</span> Knowledge Base</div>
     <div class="nav-item" onclick="goTo('demo', this); initDemo();"><span class="icon">✨</span> Demo Link</div>
   </div>
   <div class="sidebar-footer">
@@ -1039,7 +1082,60 @@ async def get_dashboard():
     </div>
   </div>
 
+  <!-- ── Knowledge Base ── -->
+  <div id="page-knowledge" class="page">
+    <div class="page-header">
+      <div class="page-title">🧠 Knowledge Base</div>
+      <div class="page-sub">Text blocks injected into the agent's system prompt at the start of every call</div>
+    </div>
+    <div class="section-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+        <div class="section-title" style="border:none;padding:0;margin:0;">Knowledge Entries</div>
+        <button class="btn btn-primary btn-sm" onclick="openKbModal()">+ Add Entry</button>
+      </div>
+      <div id="kb-list">
+        <div style="text-align:center;padding:40px;color:var(--muted);">Loading knowledge base...</div>
+      </div>
+    </div>
+    <div class="section-card" style="margin-top:20px;">
+      <div class="section-title">How it works</div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-top:10px;">
+        <p>Every <strong style="color:var(--text)">active</strong> entry is appended to the agent's system prompt at the start of each call — right after your agent instructions.</p>
+        <p style="margin-top:8px;">Use this to give the agent knowledge about your <strong style="color:var(--text)">products, services, pricing, FAQs, team, policies</strong> etc. — anything the caller might ask about.</p>
+        <p style="margin-top:8px;">💡 Keep entries focused. One topic per entry makes it easier to enable/disable specific knowledge.</p>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /main -->
+
+<!-- ── KB Add/Edit Modal ── -->
+<div class="modal-overlay" id="kb-modal" onclick="if(event.target===this)closeKbModal()">
+  <div class="modal-box" style="position:relative;min-width:540px;">
+    <button class="modal-close" onclick="closeKbModal()">✕</button>
+    <div class="modal-title" id="kb-modal-title">Add Knowledge Entry</div>
+    <div class="modal-sub">This content will be injected into the agent's system prompt during calls</div>
+    <input type="hidden" id="kb-edit-id">
+    <div style="margin-bottom:14px;">
+      <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px;">Title (optional — helps you identify the entry)</label>
+      <input id="kb-title" type="text" placeholder="e.g. Pricing Plans, Company Overview, FAQ" style="width:100%;padding:10px 14px;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;">
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px;">Content <span style="color:var(--accent)">*</span></label>
+      <textarea id="kb-content" rows="8" placeholder="Write the knowledge content here. Be specific and clear. Example:\n\nOur Starter plan costs ₹999/month and includes 500 AI calls, 5 languages, and email support.\nOur Pro plan costs ₹2499/month and includes unlimited calls, all 10 languages, priority support, and custom voice." style="width:100%;padding:10px 14px;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;line-height:1.6;resize:vertical;font-family:inherit;"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:14px;">
+      <div style="flex:1;">
+        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px;">Sort Order (lower = injected first)</label>
+        <input id="kb-sort" type="number" value="0" min="0" max="999" style="width:100%;padding:10px 14px;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-ghost btn-sm" onclick="closeKbModal()">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="saveKbEntry()" id="kb-save-btn">Save Entry</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ── Navigation ──────────────────────────────────────────────────────────────
@@ -1430,6 +1526,126 @@ function copyDemoLink() {{
   navigator.clipboard.writeText(demoUrl);
   document.getElementById('copy-demo-btn').textContent = '✅ Copied!';
   setTimeout(()=>document.getElementById('copy-demo-btn').textContent='📋 Copy Link', 2000);
+}}
+
+// ── Knowledge Base ───────────────────────────────────────────────────────────
+let _kbEntries = [];
+
+async function loadKnowledgeBase() {{
+  const list = document.getElementById('kb-list');
+  if (!list) return;
+  list.innerHTML = '<div style="text-align:center;padding:32px;color:var(--muted);">Loading...</div>';
+  try {{
+    _kbEntries = await fetch('/api/knowledge').then(r => r.json());
+    renderKbList();
+  }} catch(e) {{
+    list.innerHTML = '<div style="text-align:center;padding:32px;color:#f87171;">Could not load knowledge base. Check your Supabase connection.</div>';
+  }}
+}}
+
+function renderKbList() {{
+  const list = document.getElementById('kb-list');
+  if (!list) return;
+  if (!_kbEntries || _kbEntries.length === 0) {{
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">No knowledge entries yet. Click <strong>+ Add Entry</strong> to get started.</div>';
+    return;
+  }}
+  list.innerHTML = _kbEntries.map(e => {{
+    const active = e.is_active !== false;
+    const preview = (e.content || '').substring(0, 140) + ((e.content || '').length > 140 ? '…' : '');
+    return `<div style="padding:16px;border:1px solid ${{active ? 'var(--border)' : '#2a3448'}};border-radius:12px;margin-bottom:10px;background:${{active ? 'var(--card)' : 'rgba(0,0,0,0.2)'}};display:flex;gap:14px;align-items:flex-start;transition:all 0.2s;">
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+          <span style="font-size:13px;font-weight:600;color:${{active ? 'var(--text)' : 'var(--muted)'}}">${{e.title || 'Untitled Entry'}}</span>
+          <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:${{active ? 'rgba(34,197,94,0.12)' : 'rgba(148,163,184,0.1)'}};color:${{active ? '#22c55e' : 'var(--muted)'}}">${{active ? 'Active' : 'Inactive'}}</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.5;">${{preview}}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button class="btn btn-ghost btn-sm" onclick="toggleKbEntry('${{e.id}}', ${{!active}})" title="${{active ? 'Deactivate' : 'Activate'}}">${{active ? '⏸' : '▶'}}</button>
+        <button class="btn btn-ghost btn-sm" onclick="editKbEntry('${{e.id}}')" title="Edit">✏️</button>
+        <button class="btn btn-ghost btn-sm" style="color:#f87171;" onclick="deleteKbEntry('${{e.id}}')" title="Delete">🗑</button>
+      </div>
+    </div>`;
+  }}).join('');
+}}
+
+function openKbModal(id) {{
+  document.getElementById('kb-modal-title').textContent = id ? 'Edit Knowledge Entry' : 'Add Knowledge Entry';
+  document.getElementById('kb-save-btn').textContent = id ? 'Update Entry' : 'Save Entry';
+  document.getElementById('kb-edit-id').value = id || '';
+  if (!id) {{
+    document.getElementById('kb-title').value = '';
+    document.getElementById('kb-content').value = '';
+    document.getElementById('kb-sort').value = 0;
+  }}
+  document.getElementById('kb-modal').classList.add('open');
+  setTimeout(() => document.getElementById('kb-title').focus(), 100);
+}}
+
+function closeKbModal() {{
+  document.getElementById('kb-modal').classList.remove('open');
+}}
+
+function editKbEntry(id) {{
+  const e = _kbEntries.find(x => x.id === id);
+  if (!e) return;
+  openKbModal(id);
+  document.getElementById('kb-title').value   = e.title   || '';
+  document.getElementById('kb-content').value = e.content || '';
+  document.getElementById('kb-sort').value    = e.sort_order ?? 0;
+}}
+
+async function saveKbEntry() {{
+  const id      = document.getElementById('kb-edit-id').value;
+  const title   = document.getElementById('kb-title').value.trim();
+  const content = document.getElementById('kb-content').value.trim();
+  const sort    = parseInt(document.getElementById('kb-sort').value) || 0;
+  if (!content) {{ alert('Content is required.'); return; }}
+  const btn = document.getElementById('kb-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {{
+    let res;
+    if (id) {{
+      res = await fetch('/api/knowledge/' + id, {{
+        method: 'PUT', headers: {{'Content-Type':'application/json'}},
+        body: JSON.stringify({{ title, content, sort_order: sort }})
+      }}).then(r => r.json());
+    }} else {{
+      res = await fetch('/api/knowledge', {{
+        method: 'POST', headers: {{'Content-Type':'application/json'}},
+        body: JSON.stringify({{ title, content, sort_order: sort }})
+      }}).then(r => r.json());
+    }}
+    if (res.success === false) {{ alert('Error: ' + (res.message || 'Unknown error')); return; }}
+    closeKbModal();
+    loadKnowledgeBase();
+  }} catch(e) {{
+    alert('Failed to save: ' + e.message);
+  }} finally {{
+    btn.disabled = false;
+    btn.textContent = id ? 'Update Entry' : 'Save Entry';
+  }}
+}}
+
+async function toggleKbEntry(id, newActive) {{
+  try {{
+    await fetch('/api/knowledge/' + id, {{
+      method: 'PUT', headers: {{'Content-Type':'application/json'}},
+      body: JSON.stringify({{ is_active: newActive }})
+    }});
+    loadKnowledgeBase();
+  }} catch(e) {{ alert('Failed to update: ' + e.message); }}
+}}
+
+async function deleteKbEntry(id) {{
+  const e = _kbEntries.find(x => x.id === id);
+  const name = (e && e.title) ? `"${{e.title}}"` : 'this entry';
+  if (!confirm('Delete ' + name + '? This cannot be undone.')) return;
+  try {{
+    await fetch('/api/knowledge/' + id, {{ method: 'DELETE' }});
+    loadKnowledgeBase();
+  }} catch(e) {{ alert('Failed to delete: ' + e.message); }}
 }}
 
 // ── Boot ────────────────────────────────────────────────────────────────────

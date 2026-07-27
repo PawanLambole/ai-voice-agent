@@ -303,7 +303,17 @@ class OutboundAssistant(Agent):
         ist_context       = get_ist_time_context()
         lang_preset       = live_config_loaded.get("lang_preset", "multilingual")
         lang_instruction  = get_language_instruction(lang_preset)
-        final_instructions = base_instructions + ist_context + lang_instruction
+
+        # ── Knowledge Base injection (#KB) ────────────────────────────────────
+        try:
+            kb_block = db.get_kb_for_prompt()
+            if kb_block:
+                logger.info(f"[KB] Injecting knowledge base into system prompt ({len(kb_block)} chars)")
+        except Exception as _kb_err:
+            kb_block = ""
+            logger.warning(f"[KB] Could not load knowledge base: {_kb_err}")
+
+        final_instructions = base_instructions + kb_block + ist_context + lang_instruction
 
         # Token counter (#11)
         token_count = count_tokens(final_instructions)
