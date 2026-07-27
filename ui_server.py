@@ -26,7 +26,7 @@ def read_config():
     return {
         "first_line": get_val("first_line", "FIRST_LINE", "Namaste! This is Aryan from RapidX AI — we help businesses automate with AI. Hmm, may I ask what kind of business you run?"),
         "agent_instructions": get_val("agent_instructions", "AGENT_INSTRUCTIONS", ""),
-        "stt_min_endpointing_delay": float(get_val("stt_min_endpointing_delay", "STT_MIN_ENDPOINTING_DELAY", 0.6)),
+        "stt_min_endpointing_delay": float(get_val("stt_min_endpointing_delay", "STT_MIN_ENDPOINTING_DELAY", 0.6) or 0.6),
         "llm_model": get_val("llm_model", "LLM_MODEL", "gpt-4o-mini"),
         "tts_voice": get_val("tts_voice", "TTS_VOICE", "kavya"),
         "tts_language": get_val("tts_language", "TTS_LANGUAGE", "hi-IN"),
@@ -87,13 +87,16 @@ async def api_get_transcript(log_id: str):
         from supabase import create_client
         supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
         res = supabase.table("call_logs").select("*").eq("id", log_id).single().execute()
-        data = res.data
-        text = f"Call Log — {data.get('created_at', '')}\n"
-        text += f"Phone: {data.get('phone_number', 'Unknown')}\n"
-        text += f"Duration: {data.get('duration_seconds', 0)}s\n"
-        text += f"Summary: {data.get('summary', '')}\n\n"
-        text += "--- TRANSCRIPT ---\n"
-        text += data.get("transcript", "No transcript available.")
+        data = res.data or {}
+        if isinstance(data, dict):
+            text = f"Call Log — {data.get('created_at', '')}\n"
+            text += f"Phone: {data.get('phone_number', 'Unknown')}\n"
+            text += f"Duration: {data.get('duration_seconds', 0)}s\n"
+            text += f"Summary: {data.get('summary', '')}\n\n"
+            text += "--- TRANSCRIPT ---\n"
+            text += str(data.get("transcript") or "No transcript available.")
+        else:
+            text = "No transcript data available."
         return PlainTextResponse(content=text, media_type="text/plain",
                                  headers={"Content-Disposition": f"attachment; filename=transcript_{log_id}.txt"})
     except Exception as e:
@@ -142,11 +145,13 @@ async def api_get_contacts():
         # Deduplicate by phone number
         contacts: dict = {}
         for r in rows:
-            phone = r.get("phone_number") or "unknown"
+            if not isinstance(r, dict):
+                continue
+            phone = str(r.get("phone_number") or "unknown")
             if phone not in contacts:
                 contacts[phone] = {
                     "phone_number": phone,
-                    "caller_name": r.get("caller_name") or "",
+                    "caller_name": str(r.get("caller_name") or ""),
                     "total_calls": 0,
                     "last_seen": r.get("created_at"),
                     "is_booked": False,
@@ -155,9 +160,10 @@ async def api_get_contacts():
             c["total_calls"] += 1
             # Use the most recent non-empty name
             if not c["caller_name"] and r.get("caller_name"):
-                c["caller_name"] = r["caller_name"]
+                c["caller_name"] = str(r["caller_name"])
             # Mark booked if any call had a confirmed booking
-            if r.get("summary") and "Confirmed" in r.get("summary", ""):
+            summary_val = str(r.get("summary") or "")
+            if summary_val and "Confirmed" in summary_val:
                 c["is_booked"] = True
 
         return sorted(contacts.values(), key=lambda x: x["last_seen"] or "", reverse=True)
@@ -329,11 +335,12 @@ async def api_demo_token():
         api_secret = config.get("livekit_api_secret") or os.environ.get("LIVEKIT_API_SECRET","")
         livekit_url = config.get("livekit_url") or os.environ.get("LIVEKIT_URL","")
 
+        from datetime import timedelta
         token = AccessToken(api_key, api_secret) \
             .with_identity("demo-user") \
             .with_name("Demo Caller") \
             .with_grants(VideoGrants(room_join=True, room=room_name)) \
-            .with_ttl(3600) \
+            .with_ttl(timedelta(seconds=3600)) \
             .to_jwt()
 
         # Also dispatch the agent into the room
