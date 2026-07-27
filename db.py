@@ -118,75 +118,118 @@ def save_config_to_db(data: dict) -> bool:
 
 # ─── knowledge_base ───────────────────────────────────────────────────────────
 
+DEFAULT_KARYAH_KB = [
+    {
+        "id": "karyah-kb-1",
+        "title": "Karyah Application & Training Knowledge Base",
+        "content": (
+            "# Karyah Application - AI Agent Knowledge Base\n\n"
+            "## About Karyah\n"
+            "Karyah is a work management application developed for Kona Kona Interiors. "
+            "It helps supervisors and site workers coordinate daily work, track project progress, and maintain communication efficiently.\n\n"
+            "## Purpose\n"
+            "The application is designed to:\n"
+            "* Assign work to site workers.\n"
+            "* Manage daily tasks.\n"
+            "* Track work progress.\n"
+            "* Maintain proof of completed work.\n"
+            "* Improve communication between supervisors and workers.\n\n"
+            "## How It Works\n"
+            "1. A supervisor creates a project.\n"
+            "2. The supervisor assigns tasks to workers.\n"
+            "3. Workers can view their assigned tasks in the Karyah application.\n"
+            "4. Workers update the progress of their assigned tasks.\n"
+            "5. When required, workers upload photos as proof of completed work.\n"
+            "6. Supervisors review the updates and monitor overall project progress.\n\n"
+            "## Main Features\n"
+            "* Project management & Task assignment\n"
+            "* Daily work updates & Progress tracking\n"
+            "* Image upload as task proof\n"
+            "* Work status monitoring\n\n"
+            "## Purpose of This Call\n"
+            "Inviting workers to a short 5-10 minute online Google Meet training session about the Karyah application.\n"
+            "* Introduce yourself as Rahul calling from Kona Kona Interiors.\n"
+            "* Confirm the person's identity.\n"
+            "* Explain that the call is about Karyah application training (takes 5-10 mins).\n"
+            "* Schedule a time via Cal.com or request worker to send 'Hi' on WhatsApp to receive the Google Meet link and Karyah application link."
+        ),
+        "is_active": True,
+        "sort_order": 0
+    }
+]
+
+def _read_local_kb():
+    if os.path.exists("config.json"):
+        try:
+            with open("config.json", "r") as f:
+                data = json.load(f)
+                kb = data.get("knowledge_base")
+                if kb:
+                    return kb
+        except Exception:
+            pass
+    # Auto-seed initial Karyah KB into config.json
+    _write_local_kb(DEFAULT_KARYAH_KB)
+    return DEFAULT_KARYAH_KB
+
+def _write_local_kb(kb_list):
+    if os.path.exists("config.json"):
+        try:
+            with open("config.json", "r") as f:
+                data = json.load(f)
+            data["knowledge_base"] = kb_list
+            with open("config.json", "w") as f:
+                json.dump(data, f, indent=4)
+        except Exception:
+            pass
+
 def _seed_default_knowledge(supabase) -> list:
-    """Helper to seed initial default knowledge entries if the table is empty."""
-    default_entries = [
-        {
-            "title": "General Guidelines & Scope",
-            "content": (
-                "* Do not discuss technical implementation or internal company details.\n"
-                "* Do not answer questions unrelated to the application or business services.\n"
-                "* If you do not know the answer, politely inform the caller that a representative will assist them.\n"
-                "* Never promise features or information that are not explicitly mentioned in this knowledge base."
-            ),
-            "is_active": True,
-        },
-        {
-            "title": "Company & Business Services",
-            "content": (
-                "We assist callers with inquiries, service details, pricing information, and booking appointments. "
-                "Always maintain a polite, helpful, and professional tone."
-            ),
-            "is_active": True,
-        }
-    ]
+    """Helper to seed initial default Karyah knowledge entries if table is empty."""
     try:
-        res = supabase.table("knowledge_base").insert(default_entries).execute()
-        logger.info("Auto-seeded default knowledge base entries.")
-        return res.data or []
+        res = supabase.table("knowledge_base").insert(DEFAULT_KARYAH_KB).execute()
+        logger.info("Auto-seeded Karyah knowledge base entries.")
+        return res.data or DEFAULT_KARYAH_KB
     except Exception as e:
         logger.warning(f"Could not auto-seed default knowledge: {e}")
-        return []
+        return DEFAULT_KARYAH_KB
 
 
 def fetch_knowledge_base(active_only: bool = False) -> list:
     """
-    Fetch all knowledge base entries, ordered by created_at.
-    If active_only=True, returns only entries with is_active=True.
-    Returns [] if DB not configured or table missing.
-    Auto-seeds default initial knowledge entries if table is empty.
+    Fetch knowledge base entries (Supabase DB primary, config.json fallback).
+    Auto-seeds Karyah Knowledge Base if empty.
     """
     supabase = get_supabase()
-    if not supabase:
-        return []
-    for attempt in range(_MAX_RETRIES):
-        try:
-            q = supabase.table("knowledge_base").select("*").order("created_at")
-            if active_only:
-                q = q.eq("is_active", True)
-            res = q.execute()
-            data = res.data or []
-            if not data and not active_only:
-                data = _seed_default_knowledge(supabase)
-            return data
-        except Exception as e:
-            err = str(e)
-            if _is_retryable(err) and attempt < _MAX_RETRIES - 1:
-                time.sleep(_RETRY_DELAYS[attempt])
-                continue
-            if "does not exist" in err.lower() or "relation" in err.lower():
-                logger.info("knowledge_base table not found — run supabase_migration_knowledge_base.sql first.")
-            else:
-                logger.warning(f"Could not fetch knowledge base: {err[:120]}")
-            return []
-    return []
+    if supabase:
+        for attempt in range(_MAX_RETRIES):
+            try:
+                q = supabase.table("knowledge_base").select("*").order("created_at")
+                if active_only:
+                    q = q.eq("is_active", True)
+                res = q.execute()
+                data = res.data or []
+                if not data and not active_only:
+                    data = _seed_default_knowledge(supabase)
+                return data
+            except Exception as e:
+                err = str(e)
+                if _is_retryable(err) and attempt < _MAX_RETRIES - 1:
+                    time.sleep(_RETRY_DELAYS[attempt])
+                    continue
+                logger.info(f"Using local knowledge base fallback ({err[:60]})")
+                break
+
+    # Fallback to local config.json if DB unavailable or table missing
+    entries = _read_local_kb()
+    if active_only:
+        return [e for e in entries if e.get("is_active", True)]
+    return entries
 
 
 def get_kb_for_prompt() -> str:
     """
     Returns all active knowledge base entries formatted as a single
     [KNOWLEDGE BASE] block ready to be injected into the system prompt.
-    Returns empty string if no entries.
     """
     entries = fetch_knowledge_base(active_only=True)
     if not entries:
@@ -204,11 +247,18 @@ def get_kb_for_prompt() -> str:
 
 
 def add_knowledge_entry(title: str, content: str, sort_order: int = 0) -> dict:
-    """Insert a new knowledge base entry. Returns the created row or an error dict."""
+    """Insert a new knowledge base entry."""
+    import uuid
+    new_entry = {
+        "id": str(uuid.uuid4()),
+        "title": title,
+        "content": content,
+        "is_active": True,
+        "sort_order": sort_order,
+        "created_at": datetime.now().isoformat()
+    }
     supabase = get_supabase()
-    if not supabase:
-        return {"success": False, "message": "Supabase not configured"}
-    for attempt in range(_MAX_RETRIES):
+    if supabase:
         try:
             res = supabase.table("knowledge_base").insert({
                 "title": title,
@@ -216,59 +266,56 @@ def add_knowledge_entry(title: str, content: str, sort_order: int = 0) -> dict:
                 "is_active": True,
                 "sort_order": sort_order,
             }).execute()
-            row = res.data[0] if res.data else {}
-            logger.info(f"Knowledge base entry added: '{title}'")
+            row = res.data[0] if res.data else new_entry
             return {"success": True, "data": row}
         except Exception as e:
-            err = str(e)
-            if _is_retryable(err) and attempt < _MAX_RETRIES - 1:
-                time.sleep(_RETRY_DELAYS[attempt])
-                continue
-            logger.error(f"Failed to add knowledge entry: {err[:120]}")
-            return {"success": False, "message": err}
-    return {"success": False, "message": "Max retries exceeded"}
+            logger.warning(f"Could not add entry to DB, saving locally: {e}")
+
+    # Fallback local save
+    local_kb = _read_local_kb()
+    local_kb.append(new_entry)
+    _write_local_kb(local_kb)
+    return {"success": True, "data": new_entry}
 
 
 def update_knowledge_entry(entry_id: str, updates: dict) -> dict:
-    """Update an existing knowledge base entry by UUID. Allowed fields: title, content, is_active, sort_order."""
+    """Update an existing knowledge base entry by UUID."""
     allowed = {"title", "content", "is_active", "sort_order"}
     safe_updates = {k: v for k, v in updates.items() if k in allowed}
     if not safe_updates:
         return {"success": False, "message": "No valid fields to update"}
+
     supabase = get_supabase()
-    if not supabase:
-        return {"success": False, "message": "Supabase not configured"}
-    for attempt in range(_MAX_RETRIES):
+    if supabase:
         try:
             res = supabase.table("knowledge_base").update(safe_updates).eq("id", entry_id).execute()
             return {"success": True, "data": res.data}
         except Exception as e:
-            err = str(e)
-            if _is_retryable(err) and attempt < _MAX_RETRIES - 1:
-                time.sleep(_RETRY_DELAYS[attempt])
-                continue
-            logger.error(f"Failed to update knowledge entry {entry_id}: {err[:120]}")
-            return {"success": False, "message": err}
-    return {"success": False, "message": "Max retries exceeded"}
+            logger.warning(f"Could not update entry in DB, updating locally: {e}")
+
+    # Fallback local update
+    local_kb = _read_local_kb()
+    for e in local_kb:
+        if str(e.get("id")) == str(entry_id):
+            e.update(safe_updates)
+            break
+    _write_local_kb(local_kb)
+    return {"success": True, "data": safe_updates}
 
 
 def delete_knowledge_entry(entry_id: str) -> dict:
     """Permanently delete a knowledge base entry by UUID."""
     supabase = get_supabase()
-    if not supabase:
-        return {"success": False, "message": "Supabase not configured"}
-    for attempt in range(_MAX_RETRIES):
+    if supabase:
         try:
             supabase.table("knowledge_base").delete().eq("id", entry_id).execute()
-            logger.info(f"Knowledge base entry deleted: {entry_id}")
-            return {"success": True}
         except Exception as e:
-            err = str(e)
-            if _is_retryable(err) and attempt < _MAX_RETRIES - 1:
-                time.sleep(_RETRY_DELAYS[attempt])
-                continue
-            logger.error(f"Failed to delete knowledge entry {entry_id}: {err[:120]}")
-            return {"success": False, "message": err}
+            logger.warning(f"Could not delete entry from DB: {e}")
+
+    local_kb = _read_local_kb()
+    local_kb = [e for e in local_kb if str(e.get("id")) != str(entry_id)]
+    _write_local_kb(local_kb)
+    return {"success": True}
     return {"success": False, "message": "Max retries exceeded"}
 
 
