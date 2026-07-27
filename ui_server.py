@@ -44,15 +44,17 @@ def read_config() -> dict:
     base: dict = {
         "first_line": env_val("FIRST_LINE", "Namaste! This is Aryan from RapidX AI — we help businesses automate with AI. Hmm, may I ask what kind of business you run?"),
         "agent_instructions": env_val("AGENT_INSTRUCTIONS", ""),
-        "stt_min_endpointing_delay": float(env_val("STT_MIN_ENDPOINTING_DELAY", "0.6") or 0.6),
-        "llm_model": env_val("LLM_MODEL", "gpt-4o-mini"),
+        "llm_provider": env_val("LLM_PROVIDER", "groq" if os.getenv("GROQ_API_KEY") else "openai"),
+        "llm_model": env_val("LLM_MODEL", "llama-3.3-70b-versatile" if os.getenv("GROQ_API_KEY") else "gpt-4o-mini"),
         "tts_voice": env_val("TTS_VOICE", "kavya"),
         "tts_language": env_val("TTS_LANGUAGE", "hi-IN"),
         "livekit_url": env_val("LIVEKIT_URL", ""),
         "sip_trunk_id": env_val("SIP_TRUNK_ID", ""),
         "livekit_api_key": env_val("LIVEKIT_API_KEY", ""),
         "livekit_api_secret": env_val("LIVEKIT_API_SECRET", ""),
+        "groq_api_key": env_val("GROQ_API_KEY", ""),
         "openai_api_key": env_val("OPENAI_API_KEY", ""),
+        "anthropic_api_key": env_val("ANTHROPIC_API_KEY", ""),
         "sarvam_api_key": env_val("SARVAM_API_KEY", ""),
         "cal_api_key": env_val("CAL_API_KEY", ""),
         "cal_event_type_id": env_val("CAL_EVENT_TYPE_ID", ""),
@@ -842,23 +844,39 @@ async def get_dashboard():
   <div id="page-models" class="page">
     <div class="page-header">
       <div class="page-title">Models & Voice</div>
-      <div class="page-sub">Select the LLM brain and TTS voice persona</div>
+      <div class="page-sub">Select the LLM provider, brain model, and TTS voice persona</div>
     </div>
     <div class="section-card">
       <div class="section-title">Language Model (LLM)</div>
-      <div class="form-group" style="max-width:360px;">
-        <label>OpenAI Model</label>
-        <select id="llm_model">
-          <option value="gpt-4o-mini" {sel('llm_model','gpt-4o-mini')}>gpt-4o-mini — Fast &amp; Cheap (Default)</option>
-          <option value="gpt-4o" {sel('llm_model','gpt-4o')}>gpt-4o — Balanced</option>
-          <option value="gpt-4.1" {sel('llm_model','gpt-4.1')}>gpt-4.1 — Latest (Recommended)</option>
-          <option value="gpt-4.1-mini" {sel('llm_model','gpt-4.1-mini')}>gpt-4.1-mini — Fast &amp; Latest</option>
-          <option value="gpt-4.5-preview" {sel('llm_model','gpt-4.5-preview')}>gpt-4.5-preview — Most Capable</option>
-          <option value="o4-mini" {sel('llm_model','o4-mini')}>o4-mini — Reasoning, Fast</option>
-          <option value="o3" {sel('llm_model','o3')}>o3 — Reasoning, Best</option>
-          <option value="gpt-4-turbo" {sel('llm_model','gpt-4-turbo')}>gpt-4-turbo — Legacy</option>
-          <option value="gpt-3.5-turbo" {sel('llm_model','gpt-3.5-turbo')}>gpt-3.5-turbo — Cheapest</option>
-        </select>
+      <div class="form-row" style="max-width:720px;">
+        <div class="form-group">
+          <label>LLM Provider</label>
+          <select id="llm_provider">
+            <option value="groq" {sel('llm_provider','groq')}>Groq (Ultra-Fast &amp; High Quality)</option>
+            <option value="openai" {sel('llm_provider','openai')}>OpenAI</option>
+            <option value="claude" {sel('llm_provider','claude')}>Claude (Anthropic)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Model</label>
+          <select id="llm_model">
+            <optgroup label="Groq Models (Recommended)">
+              <option value="llama-3.3-70b-versatile" {sel('llm_model','llama-3.3-70b-versatile')}>llama-3.3-70b-versatile (Recommended)</option>
+              <option value="llama-3.1-8b-instant" {sel('llm_model','llama-3.1-8b-instant')}>llama-3.1-8b-instant (Ultra-Fast)</option>
+              <option value="mixtral-8x7b-32768" {sel('llm_model','mixtral-8x7b-32768')}>mixtral-8x7b-32768</option>
+              <option value="gemma2-9b-it" {sel('llm_model','gemma2-9b-it')}>gemma2-9b-it</option>
+            </optgroup>
+            <optgroup label="OpenAI Models">
+              <option value="gpt-4o-mini" {sel('llm_model','gpt-4o-mini')}>gpt-4o-mini — Fast &amp; Cheap</option>
+              <option value="gpt-4o" {sel('llm_model','gpt-4o')}>gpt-4o — High Intelligence</option>
+              <option value="gpt-4.1-mini" {sel('llm_model','gpt-4.1-mini')}>gpt-4.1-mini — Fast &amp; Latest</option>
+            </optgroup>
+            <optgroup label="Claude (Anthropic) Models">
+              <option value="claude-haiku-3-5-latest" {sel('llm_model','claude-haiku-3-5-latest')}>claude-haiku-3-5-latest — Ultra-Fast</option>
+              <option value="claude-3-5-sonnet-latest" {sel('llm_model','claude-3-5-sonnet-latest')}>claude-3-5-sonnet-latest — Most Capable</option>
+            </optgroup>
+          </select>
+        </div>
       </div>
     </div>
     <div class="section-card">
@@ -1033,7 +1051,9 @@ async def get_dashboard():
     <div class="section-card">
       <div class="section-title">AI Providers</div>
       <div class="form-row">
+        <div class="form-group"><label>Groq API Key</label><input type="password" id="groq_api_key" value="{config.get('groq_api_key', '')}"></div>
         <div class="form-group"><label>OpenAI API Key</label><input type="password" id="openai_api_key" value="{config.get('openai_api_key', '')}"></div>
+        <div class="form-group"><label>Anthropic API Key</label><input type="password" id="anthropic_api_key" value="{config.get('anthropic_api_key', '')}"></div>
         <div class="form-group"><label>Sarvam API Key</label><input type="password" id="sarvam_api_key" value="{config.get('sarvam_api_key', '')}"></div>
       </div>
     </div>
@@ -1346,6 +1366,7 @@ async function saveConfig(section) {{
     }});
   }} else if (section === 'models') {{
     Object.assign(payload, {{
+      llm_provider: get('llm_provider'),
       llm_model: get('llm_model'),
       tts_voice: get('tts_voice'),
       tts_language: get('tts_language'),
@@ -1354,7 +1375,8 @@ async function saveConfig(section) {{
     Object.assign(payload, {{
       livekit_url: get('livekit_url'), sip_trunk_id: get('sip_trunk_id'),
       livekit_api_key: get('livekit_api_key'), livekit_api_secret: get('livekit_api_secret'),
-      openai_api_key: get('openai_api_key'), sarvam_api_key: get('sarvam_api_key'),
+      groq_api_key: get('groq_api_key'), openai_api_key: get('openai_api_key'),
+      anthropic_api_key: get('anthropic_api_key'), sarvam_api_key: get('sarvam_api_key'),
       cal_api_key: get('cal_api_key'), cal_event_type_id: get('cal_event_type_id'),
       telegram_bot_token: get('telegram_bot_token'), telegram_chat_id: get('telegram_chat_id'),
       supabase_url: get('supabase_url'), supabase_key: get('supabase_key'),

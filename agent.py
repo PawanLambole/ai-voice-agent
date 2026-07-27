@@ -413,8 +413,19 @@ async def entrypoint(ctx: JobContext):
     # ── Load config ───────────────────────────────────────────────────────
     live_config   = get_live_config(caller_phone)
     delay_setting = live_config.get("stt_min_endpointing_delay", 0.05)
-    llm_model     = live_config.get("llm_model", "gpt-4o-mini")
-    llm_provider  = live_config.get("llm_provider", "openai")
+    
+    # Provider detection: explicit in live_config > GROQ_API_KEY present in env/config > default openai
+    llm_provider = live_config.get("llm_provider") or os.environ.get("LLM_PROVIDER")
+    if not llm_provider:
+        if live_config.get("groq_api_key") or os.environ.get("GROQ_API_KEY"):
+            llm_provider = "groq"
+        else:
+            llm_provider = "openai"
+
+    llm_model = live_config.get("llm_model") or os.environ.get("LLM_MODEL")
+    if llm_provider == "groq" and (not llm_model or llm_model.startswith("gpt-") or llm_model.startswith("claude")):
+        llm_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+
     tts_voice     = live_config.get("tts_voice", "kavya")
     tts_language  = live_config.get("tts_language", "hi-IN")
     tts_provider  = live_config.get("tts_provider", "sarvam")
@@ -423,7 +434,8 @@ async def entrypoint(ctx: JobContext):
     max_turns     = live_config.get("max_turns", 25)
 
     # Override OS env vars from UI config
-    for key in ["LIVEKIT_URL","LIVEKIT_API_KEY","LIVEKIT_API_SECRET","OPENAI_API_KEY",
+    for key in ["LIVEKIT_URL","LIVEKIT_API_KEY","LIVEKIT_API_SECRET","GROQ_API_KEY",
+                "OPENAI_API_KEY","ANTHROPIC_API_KEY","LLM_PROVIDER","LLM_MODEL",
                 "SARVAM_API_KEY","CAL_API_KEY","TELEGRAM_BOT_TOKEN","SUPABASE_URL","SUPABASE_KEY"]:
         val = live_config.get(key.lower(), "")
         if val:
