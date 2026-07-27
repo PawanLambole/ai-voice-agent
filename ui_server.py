@@ -517,8 +517,43 @@ try:
 except ImportError:
     logger.warning("[METRICS] prometheus_client not installed — /metrics disabled")
 
-# ── Main Dashboard HTML ────────────────────────────────────────────────────────
+import subprocess
+import sys
 
+_agent_process = None
+
+@app.on_event("startup")
+def start_background_agent_worker():
+    global _agent_process
+    config = read_config()
+    lk_url = config.get("livekit_url") or os.getenv("LIVEKIT_URL")
+    lk_key = config.get("livekit_api_key") or os.getenv("LIVEKIT_API_KEY")
+    lk_secret = config.get("livekit_api_secret") or os.getenv("LIVEKIT_API_SECRET")
+
+    if lk_url and lk_key and lk_secret:
+        try:
+            cmd = [sys.executable, "agent.py", "start"]
+            _agent_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+            logger.info(f"[WORKER] Successfully launched background LiveKit agent worker (PID {_agent_process.pid})")
+        except Exception as e:
+            logger.error(f"[WORKER] Failed to launch agent worker: {e}")
+    else:
+        logger.warning("[WORKER] LiveKit credentials not found — background agent worker not launched.")
+
+@app.on_event("shutdown")
+def stop_background_agent_worker():
+    global _agent_process
+    if _agent_process:
+        try:
+            _agent_process.terminate()
+            logger.info("[WORKER] Background LiveKit agent worker stopped.")
+        except Exception:
+            pass
 
 @app.get("/health")
 def health_check():
