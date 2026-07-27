@@ -620,6 +620,7 @@ async def get_dashboard():
   <title>AI Voice Agent — Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
   <style>
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
     :root {{
@@ -822,6 +823,7 @@ async def get_dashboard():
   <div class="sidebar-nav">
     <div class="nav-section">Overview</div>
     <div class="nav-item active" onclick="goTo('dashboard', this)"><span class="icon">📊</span> Dashboard</div>
+    <div class="nav-item" onclick="goTo('demo', this)"><span class="icon">🎙️</span> Web Demo Call</div>
     <div class="nav-item" onclick="goTo('calendar', this); loadCalendar();"><span class="icon">📅</span> Calendar</div>
     <div class="nav-section" style="margin-top:12px;">Configuration</div>
     <div class="nav-item" onclick="goTo('agent', this)"><span class="icon">🤖</span> Agent Settings</div>
@@ -834,7 +836,7 @@ async def get_dashboard():
     <div class="nav-item" onclick="goTo('outbound', this)"><span class="icon">📲</span> Outbound Calls</div>
     <div class="nav-item" onclick="goTo('languages', this); renderLangGrid();"><span class="icon">🌐</span> Language Presets</div>
     <div class="nav-item" onclick="goTo('knowledge', this); loadKnowledgeBase();"><span class="icon">🧠</span> Knowledge Base</div>
-    <div class="nav-item" onclick="goTo('demo', this); initDemo();"><span class="icon">✨</span> Demo Link</div>
+    <div class="nav-item" onclick="goTo('demo', this)"><span class="icon">✨</span> Shareable Link</div>
   </div>
   <div class="sidebar-footer">
     <span class="status-dot pulse"></span>Agent Online
@@ -1076,31 +1078,47 @@ async def get_dashboard():
     </div>
   </div>
 
-  <!-- ── Demo Link Page ── -->
+  <!-- ── Web Demo Call Page ── -->
   <div id="page-demo" class="page">
     <div class="page-header">
-      <div class="page-title">✨ Demo Link</div>
-      <div class="page-sub">Generate a shareable browser link to let anyone test the AI agent live</div>
+      <div class="page-title">🎙️ Web Demo Call</div>
+      <div class="page-sub">Talk directly to Rahul (AI Voice Agent) from your browser microphone</div>
     </div>
-    <div class="section-card" style="max-width:640px;">
-      <div class="section-title">Browser Demo Call</div>
-      <p style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.7;">
-        Click <strong style="color:var(--text);">Generate Demo Link</strong> to create a unique session. 
-        Share the link with anyone — they can talk to the AI agent directly from their browser, no app needed.
-        Each session is valid for <strong style="color:var(--accent);">60 minutes</strong>.
-      </p>
-      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-        <button class="btn btn-primary" onclick="generateDemo()">✨ Generate Demo Link</button>
-        <button class="btn btn-ghost" id="copy-demo-btn" onclick="copyDemoLink()" style="display:none;">📋 Copy Link</button>
-        <a id="open-demo-btn" href="#" target="_blank" class="btn btn-ghost" style="display:none;">↗ Open Demo</a>
+    
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:960px;">
+      <!-- Interactive Web Call Widget -->
+      <div class="section-card" style="text-align:center;padding:36px 24px;">
+        <div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#6c63ff,#a855f7);display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 20px;box-shadow:0 0 24px rgba(108,99,255,0.3);">🎙️</div>
+        <div style="font-size:20px;font-weight:700;margin-bottom:6px;">Talk to Rahul</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:28px;">Kona Kona Interiors · Karyah Training Calling Agent</div>
+        
+        <button class="btn btn-primary" id="dashStartBtn" onclick="startDashCall()" style="padding:14px 28px;font-size:15px;width:100%;justify-content:center;">📞 Start Demo Call</button>
+        <button class="btn btn-danger" id="dashEndBtn" onclick="endDashCall()" style="padding:14px 28px;font-size:15px;width:100%;justify-content:center;display:none;background:#ef4444;color:#fff;">📵 End Call</button>
+        
+        <div id="dashStatus" style="font-size:13px;color:var(--muted);margin-top:18px;">Click to start a live voice demo in your browser</div>
+        <div id="dashVolBar" style="display:none;gap:4px;align-items:flex-end;justify-content:center;height:32px;margin-top:16px;">
+          <span id="db1" style="width:4px;height:8px;background:var(--accent);border-radius:2px;transition:height 0.1s;"></span>
+          <span id="db2" style="width:4px;height:14px;background:var(--accent);border-radius:2px;transition:height 0.1s;"></span>
+          <span id="db3" style="width:4px;height:22px;background:var(--accent);border-radius:2px;transition:height 0.1s;"></span>
+          <span id="db4" style="width:4px;height:14px;background:var(--accent);border-radius:2px;transition:height 0.1s;"></span>
+          <span id="db5" style="width:4px;height:8px;background:var(--accent);border-radius:2px;transition:height 0.1s;"></span>
+        </div>
       </div>
-      <div id="demo-link-box" style="margin-top:16px;padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:13px;color:var(--accent);display:none;word-break:break-all;"></div>
-      <div id="demo-status" style="margin-top:10px;font-size:13px;color:var(--muted);"></div>
-    </div>
-    <div class="section-card" style="max-width:640px;margin-top:0;">
-      <div class="section-title">Embedded Preview</div>
-      <iframe id="demo-iframe" src="" style="width:100%;height:520px;border:none;border-radius:12px;background:#0f1117;display:none;"></iframe>
-      <div style="font-size:12px;color:var(--muted);margin-top:8px;">The demo runs inside your dashboard. Use the generated link to share with others.</div>
+
+      <!-- Shareable Link Generator -->
+      <div class="section-card">
+        <div class="section-title">✨ Shareable Public Link</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.7;">
+          Generate a public browser link to send to clients or team members. Anyone with the link can test the AI voice agent live without logging in.
+        </p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+          <button class="btn btn-primary" onclick="generateDemo()">✨ Generate Public Link</button>
+          <button class="btn btn-ghost" id="copy-demo-btn" onclick="copyDemoLink()" style="display:none;">📋 Copy Link</button>
+          <a id="open-demo-btn" href="#" target="_blank" class="btn btn-ghost" style="display:none;">↗ Open Demo</a>
+        </div>
+        <div id="demo-link-box" style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:12px;color:var(--accent);display:none;word-break:break-all;"></div>
+        <div id="demo-status" style="margin-top:10px;font-size:12.5px;color:var(--muted);"></div>
+      </div>
     </div>
   </div>
 
@@ -2105,7 +2123,57 @@ async function deleteKbEntry(id) {{
   try {{
     await fetch('/api/knowledge/' + id, {{ method: 'DELETE' }});
     loadKnowledgeBase();
-  }} catch(e) {{ alert('Failed to delete: ' + e.message); }}
+// ── Dashboard Web Call ──────────────────────────────────────────────────────
+let dashRoom = null;
+async function startDashCall() {{
+  const statusEl = document.getElementById('dashStatus');
+  const startBtn = document.getElementById('dashStartBtn');
+  const endBtn = document.getElementById('dashEndBtn');
+  const volBar = document.getElementById('dashVolBar');
+
+  if (!statusEl || !startBtn) return;
+  statusEl.textContent = 'Connecting to AI Agent...';
+  startBtn.disabled = true;
+  try {{
+    const res = await fetch('/api/demo-token').then(r => r.json());
+    if (res.error) throw new Error(res.error);
+    dashRoom = new LivekitClient.Room();
+    await dashRoom.connect(res.url, res.token, {{autoSubscribe: true}});
+    await dashRoom.localParticipant.setMicrophoneEnabled(true);
+
+    startBtn.style.display = 'none';
+    if (endBtn) endBtn.style.display = 'inline-flex';
+    if (volBar) volBar.style.display = 'flex';
+    statusEl.innerHTML = '<span class="status-dot pulse"></span>Connected — Speak now!';
+    animateDashBars();
+  }} catch(e) {{
+    statusEl.textContent = '❌ Error: ' + e.message;
+    startBtn.disabled = false;
+  }}
+}}
+
+async function endDashCall() {{
+  if (dashRoom) {{
+    await dashRoom.disconnect();
+    dashRoom = null;
+  }}
+  const startBtn = document.getElementById('dashStartBtn');
+  const endBtn = document.getElementById('dashEndBtn');
+  const volBar = document.getElementById('dashVolBar');
+  const statusEl = document.getElementById('dashStatus');
+  if (startBtn) {{ startBtn.style.display = 'inline-flex'; startBtn.disabled = false; }}
+  if (endBtn) endBtn.style.display = 'none';
+  if (volBar) volBar.style.display = 'none';
+  if (statusEl) statusEl.textContent = 'Call ended. Click to start again.';
+}}
+
+function animateDashBars() {{
+  if (!dashRoom) return;
+  ['db1','db2','db3','db4','db5'].forEach(id => {{
+    const el = document.getElementById(id);
+    if (el) el.style.height = (4 + Math.random()*24) + 'px';
+  }});
+  setTimeout(animateDashBars, 150);
 }}
 
 // ── Boot ────────────────────────────────────────────────────────────────────
