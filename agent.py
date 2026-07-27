@@ -414,12 +414,12 @@ async def entrypoint(ctx: JobContext):
     delay_setting = live_config.get("stt_min_endpointing_delay", 0.05)
     
     # Provider detection: explicit in live_config > GROQ_API_KEY present in env/config > default openai
+    _openai_key = live_config.get("openai_api_key") or os.environ.get("OPENAI_API_KEY", "")
+    _groq_key = live_config.get("groq_api_key") or os.environ.get("GROQ_API_KEY", "")
+
     llm_provider = live_config.get("llm_provider") or os.environ.get("LLM_PROVIDER")
-    if not llm_provider:
-        if live_config.get("groq_api_key") or os.environ.get("GROQ_API_KEY"):
-            llm_provider = "groq"
-        else:
-            llm_provider = "openai"
+    if not llm_provider or (llm_provider == "openai" and (not _openai_key or "xxxx" in _openai_key or _openai_key.startswith("sk-proj-")) and _groq_key):
+        llm_provider = "groq"
 
     llm_model = live_config.get("llm_model") or os.environ.get("LLM_MODEL")
     if llm_provider == "groq" and (not llm_model or llm_model.startswith("gpt-") or llm_model.startswith("claude")):
