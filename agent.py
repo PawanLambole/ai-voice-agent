@@ -603,30 +603,37 @@ async def entrypoint(ctx: JobContext):
 
     # ── Outbound Greeting Delay until Recipient Answers Call ───────────
     if is_outbound:
-        remote_p = None
-        if len(ctx.room.remote_participants) > 0:
-            remote_p = list(ctx.room.remote_participants.values())[0]
-        else:
-            logger.info("[OUTBOUND] Waiting for recipient to answer the phone call...")
+        logger.info("[OUTBOUND] Waiting for recipient to ANSWER the phone call...")
+
+        async def wait_for_call_answer():
+            # Check if any remote participant already has a subscribed audio track
+            for p in ctx.room.remote_participants.values():
+                for pub in p.track_publications.values():
+                    if getattr(pub, "subscribed", False) and getattr(pub, "kind", "") == "audio":
+                        return p
+
             loop = asyncio.get_running_loop()
             fut = loop.create_future()
 
-            def on_p_connected(participant):
-                if not fut.done():
+            def on_track_subscribed(track, publication, participant):
+                if not fut.done() and getattr(track, "kind", "") == "audio":
+                    logger.info(f"[OUTBOUND] Audio track subscribed from {participant.identity} — phone answered!")
                     fut.set_result(participant)
 
-            ctx.room.on("participant_connected", on_p_connected)
+            ctx.room.on("track_subscribed", on_track_subscribed)
             try:
-                remote_p = await asyncio.wait_for(fut, timeout=45.0)
-                logger.info(f"[OUTBOUND] Recipient answered phone: {remote_p.identity}")
+                p = await asyncio.wait_for(fut, timeout=45.0)
+                return p
             except asyncio.TimeoutError:
                 logger.warning("[OUTBOUND] Outbound phone call timed out (unanswered)")
+                return None
 
-        if remote_p:
-            await asyncio.sleep(1.2)  # Pause to ensure audio track is open
+        answered_p = await wait_for_call_answer()
+        if answered_p:
+            await asyncio.sleep(0.8)  # Brief pause for audio pipe stability
             greeting = live_config.get("first_line") or agent._first_line or "Hello ji... Main Rahul bol raha hoon, Kona Kona Interiors se."
-            logger.info(f"[OUTBOUND] Speaking initial greeting to caller: {greeting}")
-            await session.generate_reply(instructions=f"Say exactly this phrase: '{greeting}'")
+            logger.info(f"[OUTBOUND] Callee answered! Speaking greeting instantly: {greeting}")
+            await session.say(greeting, allow_interruptions=True)
 
     # ── TTS pre-warm (#12) ────────────────────────────────────────────────
     try:
