@@ -1076,7 +1076,7 @@ async def get_dashboard():
     </div>
 
     <!-- Category Grid Cards -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px;">
       
       <!-- Card 1: LiveKit -->
       <div class="stat-card" style="padding:24px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;" onclick="openCredModal('livekit')">
@@ -1104,20 +1104,46 @@ async def get_dashboard():
         <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:12px;">Configure →</button>
       </div>
 
-      <!-- Card 3: Integrations -->
-      <div class="stat-card" style="padding:24px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;" onclick="openCredModal('integrations')">
+      <!-- Card 3: Telegram Bot -->
+      <div class="stat-card" style="padding:24px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;" onclick="openCredModal('telegram')">
         <div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-            <div style="font-size:32px;">🔗</div>
-            <span class="badge badge-green">Integrations</span>
+            <div style="font-size:32px;">✈️</div>
+            <span class="badge badge-green">Telegram</span>
           </div>
-          <div style="font-size:16px;font-weight:700;margin-bottom:4px;">Integrations &amp; DB</div>
-          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5;">Cal.com booking, Telegram bot, and Supabase database</div>
+          <div style="font-size:16px;font-weight:700;margin-bottom:4px;">Telegram Bot</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5;">Bot Token and Chat ID for instant call notifications</div>
         </div>
         <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:12px;">Configure →</button>
       </div>
 
-      <!-- Card 4: Custom API Keys -->
+      <!-- Card 4: Cal.com -->
+      <div class="stat-card" style="padding:24px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;" onclick="openCredModal('cal')">
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="font-size:32px;">📅</div>
+            <span class="badge badge-green">Cal.com</span>
+          </div>
+          <div style="font-size:16px;font-weight:700;margin-bottom:4px;">Cal.com Booking</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5;">Cal.com API key and Event Type ID for auto-scheduling</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:12px;">Configure →</button>
+      </div>
+
+      <!-- Card 5: Supabase -->
+      <div class="stat-card" style="padding:24px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;" onclick="openCredModal('supabase')">
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="font-size:32px;">⚡</div>
+            <span class="badge badge-green">Supabase</span>
+          </div>
+          <div style="font-size:16px;font-weight:700;margin-bottom:4px;">Supabase Database</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5;">Supabase URL and Anon key for configuration storage</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:12px;">Configure →</button>
+      </div>
+
+      <!-- Card 6: Custom API Keys -->
       <div class="stat-card" style="padding:24px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;" onclick="openCredModal('custom')">
         <div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
@@ -1238,28 +1264,70 @@ async def get_dashboard():
   </div>
 </div>
 
-<!-- ── Category Modal: Integrations ── -->
-<div class="modal-overlay" id="cred-modal-integrations" onclick="if(event.target===this)closeCredModal('integrations')">
+<!-- ── Category Modal: Telegram Bot ── -->
+<div class="modal-overlay" id="cred-modal-telegram" onclick="if(event.target===this)closeCredModal('telegram')">
   <div class="modal-box" style="position:relative;min-width:540px;">
-    <button class="modal-close" onclick="closeCredModal('integrations')">✕</button>
-    <div class="modal-title">🔗 Integrations &amp; Database</div>
-    <div class="modal-sub">Cal.com, Telegram, and Supabase credentials</div>
+    <button class="modal-close" onclick="closeCredModal('telegram')">✕</button>
+    <div class="modal-title">✈️ Telegram Bot Notifications</div>
+    <div class="modal-sub">Receive instant Telegram notifications for every call and appointment</div>
+    <div class="form-row" style="margin-bottom:14px;">
+      <div class="form-group"><label>Telegram Bot Token</label><input type="password" id="telegram_bot_token" value="{config.get('telegram_bot_token', '')}"></div>
+      <div class="form-group"><label>Telegram Chat ID</label><input type="text" id="telegram_chat_id" value="{config.get('telegram_chat_id', '')}"></div>
+    </div>
+    <!-- Extra Fields Container -->
+    <div id="extra-cred-telegram" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
+    <div style="display:flex;gap:10px;justify-content:space-between;align-items:center;">
+      <button class="btn btn-ghost btn-sm" onclick="addExtraField('telegram')">+ Add New Field</button>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <span class="save-status" id="save-status-telegram">✅ Saved!</span>
+        <button class="btn btn-ghost btn-sm" onclick="closeCredModal('telegram')">Close</button>
+        <button class="btn btn-primary btn-sm" onclick="saveConfigCategory('telegram')">💾 Save Telegram</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Category Modal: Cal.com ── -->
+<div class="modal-overlay" id="cred-modal-cal" onclick="if(event.target===this)closeCredModal('cal')">
+  <div class="modal-box" style="position:relative;min-width:540px;">
+    <button class="modal-close" onclick="closeCredModal('cal')">✕</button>
+    <div class="modal-title">📅 Cal.com Calendar Booking</div>
+    <div class="modal-sub">Cal.com API key and Event Type ID for auto-scheduling appointments during calls</div>
     <div class="form-row" style="margin-bottom:14px;">
       <div class="form-group"><label>Cal.com API Key</label><input type="password" id="cal_api_key" value="{config.get('cal_api_key', '')}"></div>
       <div class="form-group"><label>Cal.com Event Type ID</label><input type="text" id="cal_event_type_id" value="{config.get('cal_event_type_id', '')}"></div>
-      <div class="form-group"><label>Telegram Bot Token</label><input type="password" id="telegram_bot_token" value="{config.get('telegram_bot_token', '')}"></div>
-      <div class="form-group"><label>Telegram Chat ID</label><input type="text" id="telegram_chat_id" value="{config.get('telegram_chat_id', '')}"></div>
+    </div>
+    <!-- Extra Fields Container -->
+    <div id="extra-cred-cal" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
+    <div style="display:flex;gap:10px;justify-content:space-between;align-items:center;">
+      <button class="btn btn-ghost btn-sm" onclick="addExtraField('cal')">+ Add New Field</button>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <span class="save-status" id="save-status-cal">✅ Saved!</span>
+        <button class="btn btn-ghost btn-sm" onclick="closeCredModal('cal')">Close</button>
+        <button class="btn btn-primary btn-sm" onclick="saveConfigCategory('cal')">💾 Save Cal.com</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Category Modal: Supabase ── -->
+<div class="modal-overlay" id="cred-modal-supabase" onclick="if(event.target===this)closeCredModal('supabase')">
+  <div class="modal-box" style="position:relative;min-width:540px;">
+    <button class="modal-close" onclick="closeCredModal('supabase')">✕</button>
+    <div class="modal-title">⚡ Supabase Database</div>
+    <div class="modal-sub">Supabase API credentials for agent configuration and CRM storage</div>
+    <div class="form-row" style="margin-bottom:14px;">
       <div class="form-group"><label>Supabase URL</label><input type="text" id="supabase_url" value="{config.get('supabase_url', '')}"></div>
       <div class="form-group"><label>Supabase Anon Key</label><input type="password" id="supabase_key" value="{config.get('supabase_key', '')}"></div>
     </div>
     <!-- Extra Fields Container -->
-    <div id="extra-cred-integrations" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
+    <div id="extra-cred-supabase" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
     <div style="display:flex;gap:10px;justify-content:space-between;align-items:center;">
-      <button class="btn btn-ghost btn-sm" onclick="addExtraField('integrations')">+ Add New Integration Key</button>
+      <button class="btn btn-ghost btn-sm" onclick="addExtraField('supabase')">+ Add New Field</button>
       <div style="display:flex;gap:10px;align-items:center;">
-        <span class="save-status" id="save-status-integrations">✅ Saved!</span>
-        <button class="btn btn-ghost btn-sm" onclick="closeCredModal('integrations')">Close</button>
-        <button class="btn btn-primary btn-sm" onclick="saveConfigCategory('integrations')">💾 Save Integrations</button>
+        <span class="save-status" id="save-status-supabase">✅ Saved!</span>
+        <button class="btn btn-ghost btn-sm" onclick="closeCredModal('supabase')">Close</button>
+        <button class="btn btn-primary btn-sm" onclick="saveConfigCategory('supabase')">💾 Save Supabase</button>
       </div>
     </div>
   </div>
@@ -1604,6 +1672,21 @@ async function saveConfigCategory(cat) {{
       openai_api_key: get('openai_api_key'),
       anthropic_api_key: get('anthropic_api_key'),
       sarvam_api_key: get('sarvam_api_key'),
+    }});
+  }} else if (cat === 'telegram') {{
+    Object.assign(payload, {{
+      telegram_bot_token: get('telegram_bot_token'),
+      telegram_chat_id: get('telegram_chat_id'),
+    }});
+  }} else if (cat === 'cal') {{
+    Object.assign(payload, {{
+      cal_api_key: get('cal_api_key'),
+      cal_event_type_id: get('cal_event_type_id'),
+    }});
+  }} else if (cat === 'supabase') {{
+    Object.assign(payload, {{
+      supabase_url: get('supabase_url'),
+      supabase_key: get('supabase_key'),
     }});
   }} else if (cat === 'integrations') {{
     Object.assign(payload, {{
