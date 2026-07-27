@@ -1200,10 +1200,15 @@ async def get_dashboard():
       <div class="form-group"><label>API Key</label><input type="password" id="livekit_api_key" value="{config.get('livekit_api_key', '')}"></div>
       <div class="form-group"><label>API Secret</label><input type="password" id="livekit_api_secret" value="{config.get('livekit_api_secret', '')}"></div>
     </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;">
-      <span class="save-status" id="save-status-livekit">✅ Saved!</span>
-      <button class="btn btn-ghost btn-sm" onclick="closeCredModal('livekit')">Close</button>
-      <button class="btn btn-primary btn-sm" onclick="saveConfigCategory('livekit')">💾 Save LiveKit</button>
+    <!-- Extra Fields Container -->
+    <div id="extra-cred-livekit" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
+    <div style="display:flex;gap:10px;justify-content:space-between;align-items:center;">
+      <button class="btn btn-ghost btn-sm" onclick="addExtraField('livekit')">+ Add New Field</button>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <span class="save-status" id="save-status-livekit">✅ Saved!</span>
+        <button class="btn btn-ghost btn-sm" onclick="closeCredModal('livekit')">Close</button>
+        <button class="btn btn-primary btn-sm" onclick="saveConfigCategory('livekit')">💾 Save LiveKit</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1220,10 +1225,15 @@ async def get_dashboard():
       <div class="form-group"><label>Anthropic API Key</label><input type="password" id="anthropic_api_key" value="{config.get('anthropic_api_key', '')}"></div>
       <div class="form-group"><label>Sarvam API Key</label><input type="password" id="sarvam_api_key" value="{config.get('sarvam_api_key', '')}"></div>
     </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;">
-      <span class="save-status" id="save-status-ai">✅ Saved!</span>
-      <button class="btn btn-ghost btn-sm" onclick="closeCredModal('ai')">Close</button>
-      <button class="btn btn-primary btn-sm" onclick="saveConfigCategory('ai')">💾 Save AI Keys</button>
+    <!-- Extra Fields Container -->
+    <div id="extra-cred-ai" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
+    <div style="display:flex;gap:10px;justify-content:space-between;align-items:center;">
+      <button class="btn btn-ghost btn-sm" onclick="addExtraField('ai')">+ Add New Provider Key</button>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <span class="save-status" id="save-status-ai">✅ Saved!</span>
+        <button class="btn btn-ghost btn-sm" onclick="closeCredModal('ai')">Close</button>
+        <button class="btn btn-primary btn-sm" onclick="saveConfigCategory('ai')">💾 Save AI Keys</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1242,10 +1252,15 @@ async def get_dashboard():
       <div class="form-group"><label>Supabase URL</label><input type="text" id="supabase_url" value="{config.get('supabase_url', '')}"></div>
       <div class="form-group"><label>Supabase Anon Key</label><input type="password" id="supabase_key" value="{config.get('supabase_key', '')}"></div>
     </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;">
-      <span class="save-status" id="save-status-integrations">✅ Saved!</span>
-      <button class="btn btn-ghost btn-sm" onclick="closeCredModal('integrations')">Close</button>
-      <button class="btn btn-primary btn-sm" onclick="saveConfigCategory('integrations')">💾 Save Integrations</button>
+    <!-- Extra Fields Container -->
+    <div id="extra-cred-integrations" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
+    <div style="display:flex;gap:10px;justify-content:space-between;align-items:center;">
+      <button class="btn btn-ghost btn-sm" onclick="addExtraField('integrations')">+ Add New Integration Key</button>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <span class="save-status" id="save-status-integrations">✅ Saved!</span>
+        <button class="btn btn-ghost btn-sm" onclick="closeCredModal('integrations')">Close</button>
+        <button class="btn btn-primary btn-sm" onclick="saveConfigCategory('integrations')">💾 Save Integrations</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1554,6 +1569,24 @@ function closeCredModal(cat) {{
   if (modal) modal.classList.remove('open');
 }}
 
+function addExtraField(cat, key = '', val = '') {{
+  const container = document.getElementById('extra-cred-' + cat);
+  if (!container) return;
+  const div = document.createElement('div');
+  div.className = 'custom-cred-row';
+  div.style.cssText = 'display:flex;gap:12px;align-items:center;padding:6px 0;';
+  div.innerHTML = `
+    <div style="flex:1;">
+      <input type="text" class="custom-key" placeholder="Key Name" value="${{key}}" style="width:100%;padding:8px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:monospace;">
+    </div>
+    <div style="flex:2;">
+      <input type="password" class="custom-val" placeholder="Value" value="${{val}}" style="width:100%;padding:8px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:monospace;">
+    </div>
+    <button class="btn btn-ghost btn-sm" style="color:var(--red);padding:6px 10px;" onclick="this.parentElement.remove()" title="Delete">🗑</button>
+  `;
+  container.appendChild(div);
+}}
+
 async function saveConfigCategory(cat) {{
   const get = id => {{ const el = document.getElementById(id); return el ? el.value : null; }};
   const payload = {{}};
@@ -1581,8 +1614,12 @@ async function saveConfigCategory(cat) {{
       supabase_url: get('supabase_url'),
       supabase_key: get('supabase_key'),
     }});
-  }} else if (cat === 'custom') {{
-    document.querySelectorAll('.custom-cred-row').forEach(row => {{
+  }}
+
+  // Read extra custom fields inside this modal
+  const modal = document.getElementById('cred-modal-' + cat);
+  if (modal) {{
+    modal.querySelectorAll('.custom-cred-row').forEach(row => {{
       const k = row.querySelector('.custom-key').value.trim();
       const v = row.querySelector('.custom-val').value.trim();
       if (k) payload[k.toLowerCase()] = v;
