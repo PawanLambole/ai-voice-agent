@@ -456,39 +456,42 @@ async def entrypoint(ctx: JobContext):
             or "ST_UFXhWiBxXpbg"
         )
         if trunk_id:
-            # VoiceLink expects pure numeric format without leading '+' (e.g. 919766573966)
+            # VoiceLink Outbound gateway expects 10-digit national number (e.g. 9766573966)
             digits = "".join(c for c in phone_number if c.isdigit())
-            if not digits.startswith("91") and len(digits) == 10:
-                digits = "91" + digits
-            dial_target = digits          # e.g. 919766573966
+            if digits.startswith("91") and len(digits) == 12:
+                digits = digits[2:]
+            elif digits.startswith("0") and len(digits) == 11:
+                digits = digits[1:]
+            dial_target = digits  # 10 digits, e.g. 9766573966
 
-            # Our outbound caller ID — pure digits without '+' (e.g. 919429391395)
+            # Our outbound caller DID (919429391395)
             raw_caller = (
                 live_config.get("vobiz_outbound_number")
                 or os.getenv("VOBIZ_OUTBOUND_NUMBER")
                 or "919429391395"
             )
             caller_id = "".join(c for c in raw_caller if c.isdigit())
+            if not caller_id.startswith("91") and len(caller_id) == 10:
+                caller_id = "91" + caller_id
 
-            logger.info(f"[OUTBOUND] Dialing {dial_target} (CallerID: {caller_id}) via SIP Trunk ({trunk_id})...")
+            logger.info(f"[OUTBOUND] Dialing recipient {dial_target} from caller DID {caller_id} via SIP Trunk ({trunk_id})...")
             try:
                 from livekit.api import CreateSIPParticipantRequest as _SipReq
                 sip_req = _SipReq(
                     sip_trunk_id=trunk_id,
-                    sip_number=dial_target,    # Recipient phone number to DIAL
-                    sip_call_to=caller_id,      # Outbound Caller ID (+919429391395)
+                    sip_call_to=dial_target,   # Recipient 10-digit number to call (9766573966)
+                    sip_number=caller_id,       # Our outbound DID caller ID (919429391395)
                     room_name=ctx.room.name,
                     participant_identity=f"sip_{dial_target}",
                     participant_name="Recipient",
                 )
                 await ctx.api.sip.create_sip_participant(sip_req)
-                logger.info(f"[OUTBOUND] SIP call successfully initiated to {dial_target} from caller ID {caller_id}")
-
+                logger.info(f"[OUTBOUND] SIP call successfully initiated to {dial_target} from DID {caller_id}")
             except Exception as e:
                 logger.error(f"[OUTBOUND] Failed to create SIP participant for {dial_target}: {e}")
-
         else:
             logger.error("[OUTBOUND] Cannot dial: sip_trunk_id missing in DB and env")
+
 
 
     # ── Rate limiting (#37) ───────────────────────────────────────────────
