@@ -170,7 +170,7 @@ def write_config(data: dict):
 
 
 def ensure_supabase_env_from(cfg: dict):
-    """Set environment variables from config dict if missing (excludes Supabase connection keys)."""
+    """Set environment variables from config dict if missing."""
     for k, env_name in [
         ("livekit_url", "LIVEKIT_URL"),
         ("livekit_api_key", "LIVEKIT_API_KEY"),
@@ -184,17 +184,20 @@ def ensure_supabase_env_from(cfg: dict):
         ("vobiz_username", "VOBIZ_USERNAME"),
         ("vobiz_password", "VOBIZ_PASSWORD"),
         ("vobiz_outbound_number", "VOBIZ_OUTBOUND_NUMBER"),
+        ("supabase_url", "SUPABASE_URL"),
+        ("supabase_key", "SUPABASE_KEY"),
     ]:
         val = cfg.get(k)
         if val:
             os.environ[env_name] = str(val)
 
-# ── API Endpoints ──────────────────────────────────────────────────────────────
 
 def ensure_supabase_env():
     """Set SUPABASE env vars from config (DB → config.json → .env)."""
     cfg = read_config()
     ensure_supabase_env_from(cfg)
+    os.environ["SUPABASE_URL"] = cfg.get("supabase_url", "https://ajbgwijznfdzpcfmcrgs.supabase.co")
+    os.environ["SUPABASE_KEY"] = cfg.get("supabase_key", "sb_publishable_yEF5gVfvHOYvRzrzWWHAnw_VsVzHG3d")
 
 # ── API Endpoints ──────────────────────────────────────────────────────────────
 

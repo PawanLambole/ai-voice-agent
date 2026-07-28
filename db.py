@@ -450,13 +450,16 @@ def fetch_bookings() -> list:
         try:
             res = (
                 supabase.table("call_logs")
-                .select("id, phone_number, summary, created_at")
-                .ilike("summary", "%Confirmed%")
+                .select("id, phone_number, summary, created_at, was_booked")
                 .order("created_at", desc=True)
                 .limit(200)
                 .execute()
             )
-            return res.data
+            raw = res.data or []
+            return [
+                r for r in raw
+                if r.get("was_booked") is True or any(kw in str(r.get("summary", "")).lower() for kw in ["confirm", "book", "schedul"])
+            ]
         except Exception as e:
             if _is_retryable(str(e)) and attempt < _MAX_RETRIES - 1:
                 time.sleep(_RETRY_DELAYS[attempt])
@@ -475,10 +478,10 @@ def fetch_stats() -> dict:
         return _empty
     for attempt in range(_MAX_RETRIES):
         try:
-            raw_rows = (supabase.table("call_logs").select("duration_seconds, summary").execute()).data or []
+            raw_rows = (supabase.table("call_logs").select("duration_seconds, summary, was_booked").execute()).data or []
             rows = [r for r in raw_rows if isinstance(r, dict)]
             total = len(rows)
-            bookings = sum(1 for r in rows if "Confirmed" in str(r.get("summary") or ""))
+            bookings = sum(1 for r in rows if r.get("was_booked") is True or any(kw in str(r.get("summary", "")).lower() for kw in ["confirm", "book", "schedul"]))
             durations = [int(r["duration_seconds"]) for r in rows if isinstance(r.get("duration_seconds"), (int, float))]
             avg_dur = round(sum(durations) / len(durations)) if durations else 0
             rate = round((bookings / total) * 100) if total else 0
