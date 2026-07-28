@@ -42,25 +42,31 @@ def read_config() -> dict:
         return os.getenv(env_key, default)
 
     base: dict = {
-        "first_line": env_val("FIRST_LINE", "Namaste! This is Aryan from RapidX AI — we help businesses automate with AI. Hmm, may I ask what kind of business you run?"),
+        "first_line": env_val("FIRST_LINE", "Hello ji... Main Rahul bol raha hoon, Kona Kona Interiors se. Ritesh Sir ne aapka number diya tha. Kya aapke paas 2 minute hain baat karne ke liye?"),
         "agent_instructions": env_val("AGENT_INSTRUCTIONS", ""),
         "llm_provider": env_val("LLM_PROVIDER", "groq" if os.getenv("GROQ_API_KEY") else "openai"),
         "llm_model": env_val("LLM_MODEL", "llama-3.3-70b-versatile" if os.getenv("GROQ_API_KEY") else "gpt-4o-mini"),
         "tts_voice": env_val("TTS_VOICE", "kavya"),
         "tts_language": env_val("TTS_LANGUAGE", "hi-IN"),
+        "stt_min_endpointing_delay": float(env_val("STT_MIN_ENDPOINTING_DELAY", 0.35)),
+        "lang_preset": env_val("LANG_PRESET", "hinglish"),
         "livekit_url": env_val("LIVEKIT_URL", ""),
-        "sip_trunk_id": env_val("SIP_TRUNK_ID", ""),
+        "sip_trunk_id": env_val("SIP_TRUNK_ID", env_val("OUTBOUND_TRUNK_ID", "")),
         "livekit_api_key": env_val("LIVEKIT_API_KEY", ""),
         "livekit_api_secret": env_val("LIVEKIT_API_SECRET", ""),
         "groq_api_key": env_val("GROQ_API_KEY", ""),
         "openai_api_key": env_val("OPENAI_API_KEY", ""),
         "anthropic_api_key": env_val("ANTHROPIC_API_KEY", ""),
         "sarvam_api_key": env_val("SARVAM_API_KEY", ""),
+        "deepgram_api_key": env_val("DEEPGRAM_API_KEY", ""),
         "cal_api_key": env_val("CAL_API_KEY", ""),
         "cal_event_type_id": env_val("CAL_EVENT_TYPE_ID", ""),
         "telegram_bot_token": env_val("TELEGRAM_BOT_TOKEN", ""),
         "telegram_chat_id": env_val("TELEGRAM_CHAT_ID", ""),
-        # Supabase creds always from env
+        "vobiz_sip_domain": env_val("VOBIZ_SIP_DOMAIN", env_val("VOICELINK_SIP_DOMAIN", "160.30.71.89:3300")),
+        "vobiz_username": env_val("VOBIZ_USERNAME", "pvan2709"),
+        "vobiz_password": env_val("VOBIZ_PASSWORD", "Pui27@.1234.x"),
+        "vobiz_outbound_number": env_val("VOBIZ_OUTBOUND_NUMBER", "+919429391395"),
         "supabase_url": env_val("SUPABASE_URL", ""),
         "supabase_key": env_val("SUPABASE_KEY", ""),
     }
@@ -70,7 +76,7 @@ def read_config() -> dict:
     for k, v in local.items():
         if v not in ("", None):
             base[k] = v
-    # Always keep supabase creds from env (never from config.json)
+    # Always keep supabase creds from env or local config.json
     base["supabase_url"] = env_val("SUPABASE_URL", "") or local.get("supabase_url", "")
     base["supabase_key"] = env_val("SUPABASE_KEY", "") or local.get("supabase_key", "")
 
@@ -133,13 +139,24 @@ def write_config(data: dict):
 
 
 def ensure_supabase_env_from(cfg: dict):
-    """Set SUPABASE_URL/KEY from cfg dict only if they are non-empty strings."""
-    url = cfg.get("supabase_url") or os.environ.get("SUPABASE_URL", "")
-    key = cfg.get("supabase_key") or os.environ.get("SUPABASE_KEY", "")
-    if url:
-        os.environ["SUPABASE_URL"] = url
-    if key:
-        os.environ["SUPABASE_KEY"] = key
+    """Set environment variables from config dict if missing."""
+    for k, env_name in [
+        ("supabase_url", "SUPABASE_URL"),
+        ("supabase_key", "SUPABASE_KEY"),
+        ("livekit_url", "LIVEKIT_URL"),
+        ("livekit_api_key", "LIVEKIT_API_KEY"),
+        ("livekit_api_secret", "LIVEKIT_API_SECRET"),
+        ("groq_api_key", "GROQ_API_KEY"),
+        ("sarvam_api_key", "SARVAM_API_KEY"),
+        ("deepgram_api_key", "DEEPGRAM_API_KEY"),
+        ("vobiz_sip_domain", "VOBIZ_SIP_DOMAIN"),
+        ("vobiz_username", "VOBIZ_USERNAME"),
+        ("vobiz_password", "VOBIZ_PASSWORD"),
+        ("vobiz_outbound_number", "VOBIZ_OUTBOUND_NUMBER"),
+    ]:
+        val = cfg.get(k)
+        if val:
+            os.environ[env_name] = str(val)
 
 # ── API Endpoints ──────────────────────────────────────────────────────────────
 
