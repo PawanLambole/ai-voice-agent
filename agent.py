@@ -329,7 +329,15 @@ class OutboundAssistant(Agent):
         self._is_outbound  = is_outbound
         live_config_loaded = self._live_config
 
-        base_instructions = live_config_loaded.get("agent_instructions", "")
+        base_instructions = live_config_loaded.get("agent_instructions") or ""
+        if len(base_instructions.strip()) < 20:
+            try:
+                with open("config.json", "r", encoding="utf-8") as f:
+                    _cfg_bak = json.load(f)
+                    base_instructions = _cfg_bak.get("agent_instructions", "")
+            except Exception:
+                pass
+
         ist_context       = get_ist_time_context()
         lang_preset       = live_config_loaded.get("lang_preset", "multilingual")
         lang_instruction  = get_language_instruction(lang_preset)

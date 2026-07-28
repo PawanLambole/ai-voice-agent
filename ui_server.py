@@ -76,6 +76,7 @@ def read_config() -> dict:
 
     # Layer 1: Supabase DB (highest priority — set via UI, survives redeployments)
     ensure_supabase_env_from(base)
+    # Merge DB config if available and valid
     try:
         import db
         db_cfg = db.load_config_from_db()
@@ -85,6 +86,15 @@ def read_config() -> dict:
                     base[k] = v
     except Exception as e:
         logger.debug(f"DB config load skipped: {e}")
+
+    # Fallback guard: Ensure first_line & agent_instructions are never weak, empty, or lost
+    default_first_line = "Hello ji... Main Rahul bol raha hoon, Kona Kona Interiors se. Ritesh Sir ne aapka number diya tha. Kya aapke paas 2 minute hain baat karne ke liye?"
+    if not base.get("first_line") or len(str(base.get("first_line", "")).strip()) < 5:
+        base["first_line"] = default_first_line
+
+    if not base.get("agent_instructions") or len(str(base.get("agent_instructions", "")).strip()) < 20:
+        local_bak = _read_local_config()
+        base["agent_instructions"] = local_bak.get("agent_instructions") or ""
 
     # Ensure provider & model consistency (e.g. if provider is Groq, model shouldn't be gpt-*)
     provider = base.get("llm_provider", "groq" if os.getenv("GROQ_API_KEY") else "openai")
