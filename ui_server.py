@@ -113,9 +113,9 @@ def read_config() -> dict:
     except Exception as e:
         logger.debug(f"DB config load skipped: {e}")
 
-    # Fallback guard: Ensure first_line & agent_instructions are never weak, empty, or lost
+    # Fallback guard: Ensure first_line & agent_instructions are never empty or missing
     default_first_line = "Hello ji... Main Rahul bol raha hoon, Kona Kona Interiors se. Ritesh Sir ne aapka number diya tha. Kya aapke paas 2 minute hain baat karne ke liye?"
-    if not base.get("first_line") or len(str(base.get("first_line", "")).strip()) < 5:
+    if not base.get("first_line") or not str(base.get("first_line", "")).strip():
         base["first_line"] = default_first_line
 
     if not base.get("agent_instructions") or len(str(base.get("agent_instructions", "")).strip()) < 20:
