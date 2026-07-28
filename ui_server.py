@@ -141,6 +141,9 @@ def write_config(data: dict):
     """
     current = _read_local_config()
     current.update(data)
+    # Remove connection-only keys so they never leak into local config or database payload
+    current.pop("supabase_url", None)
+    current.pop("supabase_key", None)
 
     # 1. Write local backup
     try:
@@ -159,10 +162,8 @@ def write_config(data: dict):
 
 
 def ensure_supabase_env_from(cfg: dict):
-    """Set environment variables from config dict if missing."""
+    """Set environment variables from config dict if missing (excludes Supabase connection keys)."""
     for k, env_name in [
-        ("supabase_url", "SUPABASE_URL"),
-        ("supabase_key", "SUPABASE_KEY"),
         ("livekit_url", "LIVEKIT_URL"),
         ("livekit_api_key", "LIVEKIT_API_KEY"),
         ("livekit_api_secret", "LIVEKIT_API_SECRET"),
