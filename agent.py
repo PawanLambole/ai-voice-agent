@@ -458,28 +458,29 @@ async def entrypoint(ctx: JobContext):
             or "ST_UFXhWiBxXpbg"
         )
         if trunk_id:
-            # VoiceLink expects full digits without +: e.g. 919766573966
+            # Build E.164 format with + prefix (required by LiveKit SIP)
             digits = "".join(c for c in phone_number if c.isdigit())
             if not digits.startswith("91") and len(digits) == 10:
-                digits = "91" + digits   # add India country code
-            dial_target = digits         # e.g. 919766573966
+                digits = "91" + digits
+            dial_target = "+" + digits          # e.g. +919766573966
 
-            # Our outbound caller ID shown to recipient (also without +)
-            caller_id = (
+            # Our outbound caller ID — must match trunk's registered number (E.164 with +)
+            raw_caller = (
                 live_config.get("vobiz_outbound_number")
                 or os.getenv("VOBIZ_OUTBOUND_NUMBER")
-                or "919429391395"
-            ).replace("+", "")
+                or "+919429391395"
+            )
+            caller_id = "+" + raw_caller.replace("+", "")  # ensure single +
 
             logger.info(f"[OUTBOUND] Dialing {dial_target} (CallerID: {caller_id}) via SIP Trunk ({trunk_id})...")
             try:
                 from livekit.api import CreateSIPParticipantRequest as _SipReq
                 sip_req = _SipReq(
                     sip_trunk_id=trunk_id,
-                    sip_call_to=dial_target,   # destination number (who to CALL)
-                    sip_number=caller_id,       # our caller ID (shown to recipient)
+                    sip_call_to=dial_target,   # E.164 destination: +919766573966
+                    sip_number=caller_id,       # E.164 caller ID:   +919429391395
                     room_name=ctx.room.name,
-                    participant_identity=f"sip_{dial_target}",
+                    participant_identity=f"sip_{digits}",
                     participant_name="Recipient",
                 )
                 await ctx.api.sip.create_sip_participant(sip_req)
