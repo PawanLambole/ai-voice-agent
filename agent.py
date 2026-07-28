@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import logging
 import certifi
@@ -10,6 +11,13 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from typing import Annotated
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 # Fix for macOS SSL certificate verification
 os.environ["SSL_CERT_FILE"] = certifi.where()
@@ -181,8 +189,8 @@ class AgentTools(llm.ToolContext):
 
     # ── Tool: Transfer to Human ───────────────────────────────────────────
     @llm.function_tool(description="Transfer this call to a human agent. Use if: caller asks for human, is angry, or query is outside scope.")
-    async def transfer_call(self) -> str:
-        logger.info("[TOOL] transfer_call triggered")
+    async def transfer_call(self, reason: Annotated[str, "Reason for transfer"] = "") -> str:
+        logger.info(f"[TOOL] transfer_call triggered (reason: {reason})")
         destination = os.getenv("DEFAULT_TRANSFER_NUMBER")
         if destination and self.sip_domain and "@" not in destination:
             clean_dest  = destination.replace("tel:", "").replace("sip:", "")
@@ -207,8 +215,8 @@ class AgentTools(llm.ToolContext):
 
     # ── Tool: End Call ────────────────────────────────────────────────────
     @llm.function_tool(description="End the call. Use ONLY when caller says bye/goodbye or after booking is fully confirmed.")
-    async def end_call(self) -> str:
-        logger.info("[TOOL] end_call triggered — hanging up.")
+    async def end_call(self, reason: Annotated[str, "Reason for ending call"] = "") -> str:
+        logger.info(f"[TOOL] end_call triggered — hanging up (reason: {reason}).")
         try:
             if self.ctx_api and self.room_name and self._sip_identity:
                 await self.ctx_api.sip.transfer_sip_participant(
@@ -265,7 +273,7 @@ class AgentTools(llm.ToolContext):
 
     # ── Tool: Business Hours (#31) ────────────────────────────────────────
     @llm.function_tool(description="Check if the business is currently open and what the operating hours are.")
-    async def get_business_hours(self) -> str:
+    async def get_business_hours(self, query: Annotated[str, "General query about business hours"] = "") -> str:
         ist  = pytz.timezone("Asia/Kolkata")
         now  = datetime.now(ist)
         hours = {
@@ -290,6 +298,27 @@ class AgentTools(llm.ToolContext):
 # AGENT CLASS
 # ══════════════════════════════════════════════════════════════════════════════
 
+VOICE_PERSONA_MAP = {
+    # Sarvam / ElevenLabs Female Voices
+    "kavya": {"name": "Kavya", "gender": "female", "verb": "bol rahi hoon", "ability": "kar sakti hoon"},
+    "ritu":  {"name": "Ritu",  "gender": "female", "verb": "bol rahi hoon", "ability": "kar sakti hoon"},
+    "priya": {"name": "Priya", "gender": "female", "verb": "bol rahi hoon", "ability": "kar sakti hoon"},
+    "neha":  {"name": "Neha",  "gender": "female", "verb": "bol rahi hoon", "ability": "kar sakti hoon"},
+    "stella":{"name": "Stella","gender": "female", "verb": "speaking",     "ability": "can help"},
+
+    # Sarvam / ElevenLabs Male Voices
+    "rahul": {"name": "Rahul", "gender": "male",   "verb": "bol raha hoon", "ability": "kar sakta hoon"},
+    "rohan": {"name": "Rohan", "gender": "male",   "verb": "bol raha hoon", "ability": "kar sakta hoon"},
+    "dev":   {"name": "Dev",   "gender": "male",   "verb": "bol raha hoon", "ability": "kar sakta hoon"},
+    "shubh": {"name": "Shubh", "gender": "male",   "verb": "bol raha hoon", "ability": "kar sakta hoon"},
+}
+
+def get_persona_for_voice(tts_voice: str):
+    v = (tts_voice or "kavya").lower()
+    if v in VOICE_PERSONA_MAP:
+        return VOICE_PERSONA_MAP[v]
+    return {"name": tts_voice.capitalize(), "gender": "female", "verb": "bol rahi hoon", "ability": "kar sakti hoon"}
+
 class OutboundAssistant(Agent):
 
     def __init__(self, agent_tools: AgentTools, first_line: str = "", live_config: dict | None = None, is_outbound: bool = False):
@@ -305,6 +334,16 @@ class OutboundAssistant(Agent):
         lang_preset       = live_config_loaded.get("lang_preset", "multilingual")
         lang_instruction  = get_language_instruction(lang_preset)
 
+        tts_voice = live_config_loaded.get("tts_voice", "kavya")
+        persona   = get_persona_for_voice(tts_voice)
+        p_name    = persona["name"]
+        p_verb    = persona["verb"]
+        p_gender  = persona["gender"]
+
+        # Adapt instructions for persona name & gender grammar
+        adapted_base     = base_instructions.replace("Rahul", p_name).replace("bol raha hoon", p_verb)
+        persona_context  = f"\n\n[DYNAMIC PERSONA: Your name is {p_name}. You are a {p_gender} employee at Kona Kona Interiors. Always use {p_gender} grammar ('{p_verb}', '{persona['ability']}').]"
+
         # ── Knowledge Base injection (#KB) ────────────────────────────────────
         try:
             kb_block = db.get_kb_for_prompt()
@@ -314,25 +353,19 @@ class OutboundAssistant(Agent):
             kb_block = ""
             logger.warning(f"[KB] Could not load knowledge base: {_kb_err}")
 
-        final_instructions = base_instructions + kb_block + ist_context + lang_instruction
+        final_instructions = adapted_base + persona_context + kb_block + ist_context + lang_instruction
 
         # Token counter (#11)
         token_count = count_tokens(final_instructions)
-        logger.info(f"[PROMPT] System prompt: {token_count} tokens")
+        logger.info(f"[PROMPT] System prompt for persona {p_name} ({p_gender}): {token_count} tokens")
         if token_count > 600:
             logger.warning(f"[PROMPT] Prompt exceeds 600 tokens — consider trimming for latency")
 
         super().__init__(instructions=final_instructions, tools=tools)
 
     async def on_enter(self):
-        if not self._is_outbound:
-            greeting = self._live_config.get(
-                "first_line",
-                self._first_line or "Hello ji... Main Rahul bol raha hoon, Kona Kona Interiors se."
-            )
-            await self.session.generate_reply(
-                instructions=f"Say exactly this phrase: '{greeting}'"
-            )
+        # Greeting is explicitly triggered in entrypoint once audio connection is ready
+        pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -415,7 +448,7 @@ async def entrypoint(ctx: JobContext):
 
     # ── Load config ───────────────────────────────────────────────────────
     live_config   = get_live_config(caller_phone)
-    delay_setting = live_config.get("stt_min_endpointing_delay", 0.05)
+    delay_setting = live_config.get("stt_min_endpointing_delay", 0.35)
     
     # Provider detection: explicit in live_config > GROQ_API_KEY present in env/config > default openai
     _openai_key = live_config.get("openai_api_key") or os.environ.get("OPENAI_API_KEY", "")
@@ -552,6 +585,19 @@ async def entrypoint(ctx: JobContext):
                 speaker=tts_voice,
                 speech_sample_rate=24000,
             )
+    elif tts_provider == "deepgram":
+        try:
+            from livekit.plugins import deepgram
+            agent_tts = deepgram.TTS(model="aura-stella-en")
+            logger.info("[TTS] Using Deepgram Aura TTS (aura-stella-en)")
+        except ImportError:
+            logger.warning("[TTS] deepgram plugin not installed — falling back to Sarvam")
+            agent_tts = sarvam.TTS(
+                target_language_code=tts_language,
+                model="bulbul:v3",
+                speaker=tts_voice,
+                speech_sample_rate=24000,
+            )
     else:
         agent_tts = sarvam.TTS(
             target_language_code=tts_language,
@@ -606,7 +652,15 @@ async def entrypoint(ctx: JobContext):
     await session.start(room=ctx.room, agent=agent, room_input_options=room_input)
 
     # ── Speak Initial Greeting (Outbound SIP vs Browser Demo) ───────────
-    greeting_text = live_config.get("first_line") or agent._first_line or "Hello ji... Main Rahul bol raha hoon, Kona Kona Interiors se."
+    persona_info = get_persona_for_voice(tts_voice)
+    p_name = persona_info["name"]
+    p_verb = persona_info["verb"]
+
+    raw_first_line = live_config.get("first_line") or agent._first_line
+    if raw_first_line:
+        greeting_text = raw_first_line.replace("Rahul", p_name).replace("bol raha hoon", p_verb)
+    else:
+        greeting_text = f"Hello ji... Main {p_name} {p_verb}, Kona Kona Interiors se. Ritesh Sir ne aapka number diya tha. Kya aapke paas 2 minute hain baat karne ke liye?"
 
     if is_outbound:
         logger.info("[OUTBOUND] Waiting for recipient to ANSWER the phone call...")
@@ -638,12 +692,18 @@ async def entrypoint(ctx: JobContext):
         if answered_p:
             await asyncio.sleep(0.8)  # Brief pause for audio pipe stability
             logger.info(f"[OUTBOUND] Callee answered! Speaking greeting instantly: {greeting_text}")
-            await session.generate_reply(instructions=f"Say exactly this phrase: '{greeting_text}'")
+            try:
+                await session.say(greeting_text, allow_interruptions=True)
+            except Exception:
+                await session.generate_reply(instructions=f"Say exactly this phrase: '{greeting_text}'")
     else:
         # Browser Demo Call / Inbound Web Call — caller is already connected in browser
         logger.info(f"[DEMO] Browser call connected. Speaking initial greeting instantly: {greeting_text}")
         await asyncio.sleep(0.6)  # Brief pause for WebRTC audio track setup
-        await session.generate_reply(instructions=f"Say exactly this phrase: '{greeting_text}'")
+        try:
+            await session.say(greeting_text, allow_interruptions=True)
+        except Exception:
+            await session.generate_reply(instructions=f"Say exactly this phrase: '{greeting_text}'")
 
     # ── TTS pre-warm (#12) ────────────────────────────────────────────────
     try:
@@ -851,9 +911,16 @@ async def entrypoint(ctx: JobContext):
         if transcript_text and transcript_text != "unavailable":
             try:
                 import openai as _oai
-                _client = _oai.AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+                _groq_key = os.environ.get("GROQ_API_KEY", "")
+                _oai_key  = os.environ.get("OPENAI_API_KEY", "")
+                if _groq_key:
+                    _client = _oai.AsyncOpenAI(api_key=_groq_key, base_url="https://api.groq.com/openai/v1")
+                    _sent_model = "llama-3.3-70b-versatile"
+                else:
+                    _client = _oai.AsyncOpenAI(api_key=_oai_key)
+                    _sent_model = "gpt-4o-mini"
                 resp = await _client.chat.completions.create(
-                    model="gpt-4o-mini", max_tokens=5,
+                    model=_sent_model, max_tokens=10,
                     messages=[{"role":"user","content":
                         f"Classify this call as one word: positive, neutral, negative, or frustrated.\n\n{transcript_text[:800]}"}]
                 )

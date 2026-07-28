@@ -379,6 +379,7 @@ DEMO_PAGE_HTML = """<!DOCTYPE html>
 @app.post("/api/call/single")
 async def api_call_single(request: Request):
     """Dispatch a single outbound call via LiveKit."""
+    ensure_agent_worker_running()
     data = await request.json()
     phone = (data.get("phone") or "").strip()
     if not phone.startswith("+"):
@@ -410,6 +411,7 @@ async def api_call_single(request: Request):
 @app.post("/api/call/bulk")
 async def api_call_bulk(request: Request):
     """Dispatch outbound calls to multiple numbers (one per line)."""
+    ensure_agent_worker_running()
     import random, json as _json
     from livekit import api as lkapi
     data = await request.json()
@@ -445,6 +447,7 @@ async def api_call_bulk(request: Request):
 @app.get("/api/demo-token")
 async def api_demo_token():
     """Generate a LiveKit room + access token for browser-based demo call."""
+    ensure_agent_worker_running()
     config = read_config()
     try:
         from livekit.api import AccessToken, VideoGrants
@@ -522,9 +525,24 @@ import sys
 
 _agent_process = None
 
-@app.on_event("startup")
-def start_background_agent_worker():
+def ensure_agent_worker_running():
+    """Verify that an agent worker process is running before dispatching calls."""
     global _agent_process
+    if _agent_process and _agent_process.poll() is None:
+        return True
+
+    # Check if any agent.py process is currently running on the system
+    try:
+        import psutil
+        for proc in psutil.process_iter(['pid', 'cmdline']):
+            cmd = proc.info.get('cmdline') or []
+            if any("agent.py" in str(c) for c in cmd):
+                return True
+    except Exception:
+        pass
+
+    # If worker is not running, auto-start it!
+    logger.info("[WORKER] Worker process not running — auto-starting background LiveKit agent worker...")
     config = read_config()
     lk_url = config.get("livekit_url") or os.getenv("LIVEKIT_URL")
     lk_key = config.get("livekit_api_key") or os.getenv("LIVEKIT_API_KEY")
@@ -532,18 +550,34 @@ def start_background_agent_worker():
 
     if lk_url and lk_key and lk_secret:
         try:
+            env = os.environ.copy()
+            env["PYTHONUTF8"] = "1"
+            env["PYTHONIOENCODING"] = "utf-8"
             cmd = [sys.executable, "agent.py", "start"]
             _agent_process = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
-            logger.info(f"[WORKER] Successfully launched background LiveKit agent worker (PID {_agent_process.pid})")
+            logger.info(f"[WORKER] Successfully auto-started background LiveKit agent worker (PID {_agent_process.pid})")
+            import time
+            time.sleep(1.5)  # Pause for worker registration with LiveKit Cloud
+            return True
         except Exception as e:
-            logger.error(f"[WORKER] Failed to launch agent worker: {e}")
-    else:
-        logger.warning("[WORKER] LiveKit credentials not found — background agent worker not launched.")
+            logger.error(f"[WORKER] Failed to auto-start agent worker: {e}")
+            return False
+    return False
+
+@app.get("/api/worker/status")
+def get_worker_status():
+    """Return status of agent worker process."""
+    is_running = ensure_agent_worker_running()
+    return {"status": "online" if is_running else "offline", "running": is_running}
+
+@app.on_event("startup")
+def start_background_agent_worker():
+    ensure_agent_worker_running()
 
 @app.on_event("shutdown")
 def stop_background_agent_worker():
@@ -562,6 +596,7 @@ def health_check():
         "status": "ok",
         "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
         "service": "rapidx-ai-voice-agent",
+        "worker_status": "online" if ensure_agent_worker_running() else "offline",
     }
 
 @app.get("/", response_class=HTMLResponse)
@@ -2152,6 +2187,17 @@ async function startDashCall() {{
     const res = await fetch('/api/demo-token').then(r => r.json());
     if (res.error) throw new Error(res.error);
     dashRoom = new LivekitClient.Room();
+    dashRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {{
+      console.log('[LIVEKIT] Agent audio track subscribed:', track.kind, participant ? participant.identity : 'agent');
+      if (track.kind === 'audio') {{
+        const el = track.attach();
+        document.body.appendChild(el);
+        el.play().catch(err => console.warn('Audio playback error:', err));
+      }}
+    }});
+    dashRoom.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => {{
+      track.detach().forEach(el => el.remove());
+    }});
     await dashRoom.connect(res.url, res.token, {{autoSubscribe: true}});
     await dashRoom.localParticipant.setMicrophoneEnabled(true);
 
