@@ -675,10 +675,17 @@ def get_worker_status():
 def health_check():
     """Health check endpoint for Coolify monitoring (#22) with DB diagnostics."""
     import db
+    import os
+    
+    env_url = os.environ.get("SUPABASE_URL", "")
+    env_key = os.environ.get("SUPABASE_KEY", "")
+    
     sb = db.get_supabase()
     db_status = "unconfigured"
     db_error = None
     db_url = None
+    final_key_masked = None
+    
     if sb:
         db_url = str(sb.supabase_url)
         try:
@@ -687,6 +694,29 @@ def health_check():
         except Exception as e:
             db_status = "error"
             db_error = str(e)
+            
+        # Determine the final key used
+        key_val = env_key.strip() if env_key else ""
+        def is_placeholder(val: str, name: str) -> bool:
+            if not val:
+                return True
+            v = val.strip().lower()
+            return "your_" in v or name.lower() in v or v == "placeholder"
+            
+        if is_placeholder(key_val, "supabase_key"):
+            key_val = "sb_publishable_yEF5gVfvHOYvRzrzWWHAnw_VsVzHG3d"
+            
+        if len(key_val) > 8:
+            final_key_masked = f"{key_val[:6]}...{key_val[-6:]} (len={len(key_val)})"
+        else:
+            final_key_masked = "too_short_or_empty"
+
+    def mask_val(val: str) -> str:
+        if not val:
+            return "empty"
+        if len(val) > 10:
+            return f"{val[:6]}...{val[-4:]} (len={len(val)})"
+        return f"{val} (len={len(val)})"
 
     return {
         "status": "ok",
@@ -696,7 +726,10 @@ def health_check():
         "database": {
             "status": db_status,
             "url": db_url,
-            "error": db_error
+            "error": db_error,
+            "env_supabase_url": mask_val(env_url),
+            "env_supabase_key": mask_val(env_key),
+            "final_key_masked": final_key_masked
         }
     }
 
