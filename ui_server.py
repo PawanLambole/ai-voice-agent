@@ -52,56 +52,33 @@ def _read_local_config() -> dict:
 def read_config() -> dict:
     """
     Merged config priority (highest → lowest):
-      1. Supabase DB  (agent_config table)
-      2. config.json  (local file)
-      3. .env / Render environment variables
+      1. config.json  (lowest — behavioral defaults only, no secrets)
+      2. Supabase DB  (middle — persisted UI settings & secrets)
+      3. .env / Render environment variables (highest — always wins)
     Supabase credentials themselves always come from env (chicken-and-egg).
     """
-    # Layer 3: env defaults
+
     def env_val(env_key, default=""):
         return os.getenv(env_key, default)
 
-    base: dict = {
-        "first_line": env_val("FIRST_LINE", "Hello ji... Main Rahul bol raha hoon, Kona Kona Interiors se. Ritesh Sir ne aapka number diya tha. Kya aapke paas 2 minute hain baat karne ke liye?"),
-        "agent_instructions": env_val("AGENT_INSTRUCTIONS", ""),
-        "llm_provider": env_val("LLM_PROVIDER", "groq" if os.getenv("GROQ_API_KEY") else "openai"),
-        "llm_model": env_val("LLM_MODEL", "llama-3.3-70b-versatile" if os.getenv("GROQ_API_KEY") else "gpt-4o-mini"),
-        "tts_voice": env_val("TTS_VOICE", "kavya"),
-        "tts_language": env_val("TTS_LANGUAGE", "hi-IN"),
-        "stt_min_endpointing_delay": float(env_val("STT_MIN_ENDPOINTING_DELAY", 0.35)),
-        "lang_preset": env_val("LANG_PRESET", "hinglish"),
-        "livekit_url": env_val("LIVEKIT_URL", ""),
-        "sip_trunk_id": env_val("SIP_TRUNK_ID", env_val("OUTBOUND_TRUNK_ID", "")),
-        "livekit_api_key": env_val("LIVEKIT_API_KEY", ""),
-        "livekit_api_secret": env_val("LIVEKIT_API_SECRET", ""),
-        "groq_api_key": env_val("GROQ_API_KEY", ""),
-        "openai_api_key": env_val("OPENAI_API_KEY", ""),
-        "anthropic_api_key": env_val("ANTHROPIC_API_KEY", ""),
-        "sarvam_api_key": env_val("SARVAM_API_KEY", ""),
-        "deepgram_api_key": env_val("DEEPGRAM_API_KEY", ""),
-        "gemini_api_key": env_val("GEMINI_API_KEY", env_val("GOOGLE_API_KEY", "")),
-        "google_api_key": env_val("GOOGLE_API_KEY", env_val("GEMINI_API_KEY", "")),
-        "cal_api_key": env_val("CAL_API_KEY", ""),
-        "cal_event_type_id": env_val("CAL_EVENT_TYPE_ID", ""),
-        "telegram_bot_token": env_val("TELEGRAM_BOT_TOKEN", ""),
-        "telegram_chat_id": env_val("TELEGRAM_CHAT_ID", ""),
-        "vobiz_sip_domain": env_val("VOBIZ_SIP_DOMAIN", env_val("VOICELINK_SIP_DOMAIN", "160.30.71.89:3300")),
-        "vobiz_username": env_val("VOBIZ_USERNAME", "pvan2709"),
-        "vobiz_password": env_val("VOBIZ_PASSWORD", "Pui27@.1234.x"),
-        "vobiz_outbound_number": env_val("VOBIZ_OUTBOUND_NUMBER", "+919429391395"),
-        "supabase_url": env_val("SUPABASE_URL", ""),
-        "supabase_key": env_val("SUPABASE_KEY", ""),
-    }
+    # ── Priority order ──────────────────────────────────────────────────────
+    # 1. config.json  (lowest — behavioral defaults only, no secrets)
+    # 2. Supabase DB  (middle — persisted UI settings & secrets)
+    # 3. .env / os.environ (highest — always wins; set on Render dashboard or local .env)
+    # ────────────────────────────────────────────────────────────────────────
 
-    # Layer 2: local config.json (override env defaults)
+    # Layer 1 (lowest): config.json behavioral defaults
+    base: dict = {}
+
     local = _read_local_config()
     for k, v in local.items():
         if v not in ("", None):
             base[k] = v
-    # Always keep supabase creds from env or local config.json or fallback to active project creds
+
+    # Always resolve Supabase creds first so we can connect to DB
     s_url = env_val("SUPABASE_URL", "").strip() or local.get("supabase_url", "")
     s_key = env_val("SUPABASE_KEY", "").strip() or local.get("supabase_key", "")
-    
+
     def is_placeholder(val: str, name: str) -> bool:
         if not val:
             return True
@@ -115,10 +92,9 @@ def read_config() -> dict:
 
     base["supabase_url"] = s_url
     base["supabase_key"] = s_key
-
-    # Layer 1: Supabase DB (highest priority — set via UI, survives redeployments)
     ensure_supabase_env_from(base)
-    # Merge DB config if available and valid
+
+    # Layer 2 (middle): Supabase DB — fills any key not set in .env
     try:
         import db
         db_cfg = db.load_config_from_db()
@@ -129,14 +105,59 @@ def read_config() -> dict:
     except Exception as e:
         logger.debug(f"DB config load skipped: {e}")
 
+    # Layer 3 (highest): .env / os.environ — always overrides DB
+    # Map of config key → env variable name(s) to check
+    _ENV_MAP = {
+        "first_line":               ("FIRST_LINE",),
+        "agent_instructions":       ("AGENT_INSTRUCTIONS",),
+        "llm_provider":             ("LLM_PROVIDER",),
+        "llm_model":                ("LLM_MODEL",),
+        "tts_voice":                ("TTS_VOICE",),
+        "tts_language":             ("TTS_LANGUAGE",),
+        "stt_min_endpointing_delay":("STT_MIN_ENDPOINTING_DELAY",),
+        "lang_preset":              ("LANG_PRESET",),
+        "livekit_url":              ("LIVEKIT_URL",),
+        "sip_trunk_id":             ("SIP_TRUNK_ID", "OUTBOUND_TRUNK_ID"),
+        "livekit_api_key":          ("LIVEKIT_API_KEY",),
+        "livekit_api_secret":       ("LIVEKIT_API_SECRET",),
+        "groq_api_key":             ("GROQ_API_KEY",),
+        "openai_api_key":           ("OPENAI_API_KEY",),
+        "anthropic_api_key":        ("ANTHROPIC_API_KEY",),
+        "sarvam_api_key":           ("SARVAM_API_KEY",),
+        "deepgram_api_key":         ("DEEPGRAM_API_KEY",),
+        "gemini_api_key":           ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+        "google_api_key":           ("GOOGLE_API_KEY", "GEMINI_API_KEY"),
+        "cal_api_key":              ("CAL_API_KEY",),
+        "cal_event_type_id":        ("CAL_EVENT_TYPE_ID",),
+        "telegram_bot_token":       ("TELEGRAM_BOT_TOKEN",),
+        "telegram_chat_id":         ("TELEGRAM_CHAT_ID",),
+        "vobiz_sip_domain":         ("VOBIZ_SIP_DOMAIN", "VOICELINK_SIP_DOMAIN"),
+        "vobiz_username":           ("VOBIZ_USERNAME",),
+        "vobiz_password":           ("VOBIZ_PASSWORD",),
+        "vobiz_outbound_number":    ("VOBIZ_OUTBOUND_NUMBER",),
+        "supabase_url":             ("SUPABASE_URL",),
+        "supabase_key":             ("SUPABASE_KEY",),
+    }
+    for cfg_key, env_names in _ENV_MAP.items():
+        for env_name in env_names:
+            env_value = os.environ.get(env_name, "").strip()
+            if env_value:
+                base[cfg_key] = env_value
+                break  # first matching env var wins
+
+    # Cast numeric field
+    try:
+        base["stt_min_endpointing_delay"] = float(base.get("stt_min_endpointing_delay", 0.35))
+    except (TypeError, ValueError):
+        base["stt_min_endpointing_delay"] = 0.35
+
     # Fallback guard: Ensure first_line & agent_instructions are never empty or missing
     default_first_line = "Hello ji... Main Rahul bol raha hoon, Kona Kona Interiors se. Ritesh Sir ne aapka number diya tha. Kya aapke paas 2 minute hain baat karne ke liye?"
     if not base.get("first_line") or not str(base.get("first_line", "")).strip():
         base["first_line"] = default_first_line
 
     if not base.get("agent_instructions") or len(str(base.get("agent_instructions", "")).strip()) < 20:
-        local_bak = _read_local_config()
-        base["agent_instructions"] = local_bak.get("agent_instructions") or ""
+        base["agent_instructions"] = local.get("agent_instructions") or ""
 
     # Ensure provider & model consistency (e.g. if provider is Groq, model shouldn't be gpt-*)
     provider = base.get("llm_provider", "groq" if os.getenv("GROQ_API_KEY") else "openai")
@@ -149,6 +170,7 @@ def read_config() -> dict:
         base["llm_model"] = "claude-haiku-3-5-latest"
 
     return base
+
 
 
 def write_config(data: dict):
