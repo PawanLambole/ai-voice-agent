@@ -459,12 +459,18 @@ async def entrypoint(ctx: JobContext):
         )
         if trunk_id:
             dial_target = format_number_for_voicelink(phone_number)
-            logger.info(f"[OUTBOUND] Dialing {dial_target} (raw: {phone_number}) via SIP Trunk ({trunk_id})...")
+            caller_id = (
+                live_config.get("vobiz_outbound_number")
+                or os.getenv("VOBIZ_OUTBOUND_NUMBER")
+                or "919429391395"
+            ).replace("+", "")
+            logger.info(f"[OUTBOUND] Dialing {dial_target} (CallerID: {caller_id}) via SIP Trunk ({trunk_id})...")
             try:
                 from livekit.api import CreateSIPParticipantRequest as _SipReq
                 sip_req = _SipReq(
                     sip_trunk_id=trunk_id,
                     sip_call_to=dial_target,
+                    sip_number=caller_id,
                     room_name=ctx.room.name,
                     participant_identity=f"sip_{dial_target}",
                     participant_name="Recipient",
@@ -486,13 +492,19 @@ async def entrypoint(ctx: JobContext):
     # Provider detection: explicit in live_config > GROQ_API_KEY present in env/config > default openai
     _openai_key = live_config.get("openai_api_key") or os.environ.get("OPENAI_API_KEY", "")
     _groq_key = live_config.get("groq_api_key") or os.environ.get("GROQ_API_KEY", "")
+    _gemini_key = live_config.get("gemini_api_key") or live_config.get("google_api_key") or os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
 
     llm_provider = live_config.get("llm_provider") or os.environ.get("LLM_PROVIDER")
-    if not llm_provider or (llm_provider == "openai" and (not _openai_key or "xxxx" in _openai_key or _openai_key.startswith("sk-proj-")) and _groq_key):
-        llm_provider = "groq"
+    if not llm_provider or not _openai_key or "your_" in _openai_key or "xxxx" in _openai_key:
+        if _groq_key:
+            llm_provider = "groq"
+        elif _gemini_key:
+            llm_provider = "google"
+        elif _openai_key:
+            llm_provider = "openai"
 
     llm_model = live_config.get("llm_model") or os.environ.get("LLM_MODEL")
-    if llm_provider == "groq" and (not llm_model or llm_model.startswith("gpt-") or llm_model.startswith("claude")):
+    if llm_provider == "groq" and (not llm_model or llm_model.startswith("gpt-") or llm_model.startswith("claude") or llm_model.startswith("gemini")):
         llm_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
     tts_voice     = live_config.get("tts_voice", "kavya")
