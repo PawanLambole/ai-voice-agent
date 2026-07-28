@@ -673,12 +673,31 @@ def get_worker_status():
 
 @app.get("/health")
 def health_check():
-    """Health check endpoint for Coolify monitoring (#22)."""
+    """Health check endpoint for Coolify monitoring (#22) with DB diagnostics."""
+    import db
+    sb = db.get_supabase()
+    db_status = "unconfigured"
+    db_error = None
+    db_url = None
+    if sb:
+        db_url = str(sb.supabase_url)
+        try:
+            sb.table("call_logs").select("id").limit(1).execute()
+            db_status = "connected"
+        except Exception as e:
+            db_status = "error"
+            db_error = str(e)
+
     return {
         "status": "ok",
         "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
         "service": "rapidx-ai-voice-agent",
         "worker_status": "online" if ensure_agent_worker_running() else "offline",
+        "database": {
+            "status": db_status,
+            "url": db_url,
+            "error": db_error
+        }
     }
 
 @app.get("/", response_class=HTMLResponse)
