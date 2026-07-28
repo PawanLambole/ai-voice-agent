@@ -422,8 +422,6 @@ async def entrypoint(ctx: JobContext):
                 is_outbound = True
                 phone_number = phone
                 logger.info(f"[OUTBOUND] Target phone number from metadata: {phone_number}")
-            elif is_demo:
-                logger.info(f"[DEMO] Browser demo call detected for room {ctx.room.name}")
         except Exception as e:
             logger.warning(f"[METADATA] Failed to parse job metadata: {e}")
 
@@ -458,35 +456,37 @@ async def entrypoint(ctx: JobContext):
             or "ST_UFXhWiBxXpbg"
         )
         if trunk_id:
-            # Build E.164 format with + prefix (required by LiveKit SIP)
+            # VoiceLink expects pure numeric format without leading '+' (e.g. 919766573966)
             digits = "".join(c for c in phone_number if c.isdigit())
             if not digits.startswith("91") and len(digits) == 10:
                 digits = "91" + digits
-            dial_target = "+" + digits          # e.g. +919766573966
+            dial_target = digits          # e.g. 919766573966
 
-            # Our outbound caller ID — must match trunk's registered number (E.164 with +)
+            # Our outbound caller ID — pure digits without '+' (e.g. 919429391395)
             raw_caller = (
                 live_config.get("vobiz_outbound_number")
                 or os.getenv("VOBIZ_OUTBOUND_NUMBER")
-                or "+919429391395"
+                or "919429391395"
             )
-            caller_id = "+" + raw_caller.replace("+", "")  # ensure single +
+            caller_id = "".join(c for c in raw_caller if c.isdigit())
 
             logger.info(f"[OUTBOUND] Dialing {dial_target} (CallerID: {caller_id}) via SIP Trunk ({trunk_id})...")
             try:
                 from livekit.api import CreateSIPParticipantRequest as _SipReq
                 sip_req = _SipReq(
                     sip_trunk_id=trunk_id,
-                    sip_call_to=dial_target,   # E.164 destination: +919766573966
-                    sip_number=caller_id,       # E.164 caller ID:   +919429391395
+                    sip_number=dial_target,    # Recipient phone number to DIAL
+                    sip_call_to=caller_id,      # Outbound Caller ID (+919429391395)
                     room_name=ctx.room.name,
-                    participant_identity=f"sip_{digits}",
+                    participant_identity=f"sip_{dial_target}",
                     participant_name="Recipient",
                 )
                 await ctx.api.sip.create_sip_participant(sip_req)
-                logger.info(f"[OUTBOUND] SIP call successfully initiated to {dial_target}")
+                logger.info(f"[OUTBOUND] SIP call successfully initiated to {dial_target} from caller ID {caller_id}")
+
             except Exception as e:
                 logger.error(f"[OUTBOUND] Failed to create SIP participant for {dial_target}: {e}")
+
         else:
             logger.error("[OUTBOUND] Cannot dial: sip_trunk_id missing in DB and env")
 
