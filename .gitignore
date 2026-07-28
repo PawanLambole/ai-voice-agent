@@ -12,7 +12,9 @@ __pycache__/
 .vscode/
 .idea/
 
-# Temporary files
+# Temporary files & CLI caches
 rendered_dashboard.html
 scratch/
 test_script.js
+supabase/.temp/
+*.log
