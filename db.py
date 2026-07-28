@@ -187,8 +187,9 @@ def _write_local_kb(kb_list):
 def _seed_default_knowledge(supabase) -> list:
     """Helper to seed initial default Karyah knowledge entries if table is empty."""
     try:
-        res = supabase.table("knowledge_base").insert(DEFAULT_KARYAH_KB).execute()
-        logger.info("Auto-seeded Karyah knowledge base entries.")
+        clean_entries = [{k: v for k, v in item.items() if k != "id"} for item in DEFAULT_KARYAH_KB]
+        res = supabase.table("knowledge_base").insert(clean_entries).execute()
+        logger.info("Auto-seeded Karyah knowledge base entries into Supabase.")
         return res.data or DEFAULT_KARYAH_KB
     except Exception as e:
         logger.warning(f"Could not auto-seed default knowledge: {e}")
