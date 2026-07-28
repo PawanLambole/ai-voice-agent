@@ -277,28 +277,40 @@ async def api_add_knowledge(request: Request):
     """Add a new knowledge base entry."""
     ensure_supabase_env()
     import db
-    data = await request.json()
-    title      = str(data.get("title", "")).strip()
-    content    = str(data.get("content", "")).strip()
-    sort_order = int(data.get("sort_order", 0))
-    if not content:
-        return {"success": False, "message": "Content is required"}
-    return db.add_knowledge_entry(title=title, content=content, sort_order=sort_order)
+    try:
+        data = await request.json()
+        title      = str(data.get("title", "")).strip()
+        content    = str(data.get("content", "")).strip()
+        sort_order = int(data.get("sort_order", 0))
+        if not content:
+            return {"success": False, "message": "Content is required"}
+        return db.add_knowledge_entry(title=title, content=content, sort_order=sort_order)
+    except Exception as e:
+        logger.error(f"Error adding knowledge base entry: {e}")
+        return {"success": False, "message": str(e)}
 
 @app.put("/api/knowledge/{entry_id}")
 async def api_update_knowledge(entry_id: str, request: Request):
     """Update a knowledge base entry."""
     ensure_supabase_env()
     import db
-    updates = await request.json()
-    return db.update_knowledge_entry(entry_id=entry_id, updates=updates)
+    try:
+        updates = await request.json()
+        return db.update_knowledge_entry(entry_id=entry_id, updates=updates)
+    except Exception as e:
+        logger.error(f"Error updating knowledge base entry: {e}")
+        return {"success": False, "message": str(e)}
 
 @app.delete("/api/knowledge/{entry_id}")
 async def api_delete_knowledge(entry_id: str):
     """Delete a knowledge base entry."""
     ensure_supabase_env()
     import db
-    return db.delete_knowledge_entry(entry_id=entry_id)
+    try:
+        return db.delete_knowledge_entry(entry_id=entry_id)
+    except Exception as e:
+        logger.error(f"Error deleting knowledge base entry: {e}")
+        return {"success": False, "message": str(e)}
 
 
 DEMO_PAGE_HTML = """<!DOCTYPE html>
