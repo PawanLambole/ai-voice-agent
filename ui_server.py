@@ -99,11 +99,11 @@ def read_config() -> dict:
         if v not in ("", None):
             base[k] = v
     # Always keep supabase creds from env or local config.json or fallback to active project creds
-    s_url = env_val("SUPABASE_URL", "") or local.get("supabase_url", "")
-    s_key = env_val("SUPABASE_KEY", "") or local.get("supabase_key", "")
-    if not s_url:
+    s_url = env_val("SUPABASE_URL", "").strip() or local.get("supabase_url", "")
+    s_key = env_val("SUPABASE_KEY", "").strip() or local.get("supabase_key", "")
+    if not s_url or "ajbgwijznfdzpcfmcrgs" not in s_url:
         s_url = "https://ajbgwijznfdzpcfmcrgs.supabase.co"
-    if not s_key or "your_supabase" in s_key.lower() or "yplraarslqarwuedzlfr" in s_key:
+    if not s_key or s_key.startswith("eyJ") or not s_key.startswith("sb_") or "your_supabase" in s_key.lower():
         s_key = "sb_publishable_yEF5gVfvHOYvRzrzWWHAnw_VsVzHG3d"
     base["supabase_url"] = s_url
     base["supabase_key"] = s_key

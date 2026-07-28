@@ -40,10 +40,13 @@ DEFAULT_SUPABASE_URL = "https://ajbgwijznfdzpcfmcrgs.supabase.co"
 DEFAULT_SUPABASE_KEY = "sb_publishable_yEF5gVfvHOYvRzrzWWHAnw_VsVzHG3d"
 
 def get_supabase() -> Client | None:
-    url = (os.environ.get("SUPABASE_URL", "").strip() or DEFAULT_SUPABASE_URL)
+    url = os.environ.get("SUPABASE_URL", "").strip()
+    if not url or "ajbgwijznfdzpcfmcrgs" not in url:
+        url = DEFAULT_SUPABASE_URL
+
     key = os.environ.get("SUPABASE_KEY", "").strip()
-    # Fallback if key is missing, placeholder, or expired legacy JWT
-    if not key or "your_supabase" in key.lower() or "yplraarslqarwuedzlfr" in key:
+    # Force switch if key is missing, placeholder, legacy JWT (eyJ...), or not starting with sb_
+    if not key or key.startswith("eyJ") or not key.startswith("sb_") or "your_supabase" in key.lower():
         key = DEFAULT_SUPABASE_KEY
     if not url or not key:
         return None
