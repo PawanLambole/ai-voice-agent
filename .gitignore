@@ -11,3 +11,8 @@ __pycache__/
 # IDE settings
 .vscode/
 .idea/
+
+# Temporary files
+rendered_dashboard.html
+scratch/
+test_script.js
