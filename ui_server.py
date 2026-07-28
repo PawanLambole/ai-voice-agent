@@ -7,10 +7,28 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("ui-server")
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="RapidX AI Dashboard")
+_agent_process = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    try:
+        ensure_agent_worker_running()
+    except Exception as e:
+        logger.warning(f"[LIFESPAN] Startup worker check: {e}")
+    yield
+    # Shutdown
+    global _agent_process
+    if _agent_process:
+        try:
+            _agent_process.terminate()
+            logger.info("[WORKER] Background LiveKit agent worker stopped.")
+        except Exception:
+            pass
+
+app = FastAPI(title="RapidX AI Dashboard", lifespan=lifespan)
 
 CONFIG_FILE = "config.json"
 
@@ -613,20 +631,6 @@ def get_worker_status():
     """Return status of agent worker process."""
     is_running = ensure_agent_worker_running()
     return {"status": "online" if is_running else "offline", "running": is_running}
-
-@app.on_event("startup")
-def start_background_agent_worker():
-    ensure_agent_worker_running()
-
-@app.on_event("shutdown")
-def stop_background_agent_worker():
-    global _agent_process
-    if _agent_process:
-        try:
-            _agent_process.terminate()
-            logger.info("[WORKER] Background LiveKit agent worker stopped.")
-        except Exception:
-            pass
 
 @app.get("/health")
 def health_check():
