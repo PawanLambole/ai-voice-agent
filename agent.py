@@ -386,9 +386,15 @@ class OutboundAssistant(Agent):
         pass
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# MAIN ENTRYPOINT
-# ══════════════════════════════════════════════════════════════════════════════
+def format_number_for_voicelink(phone: str) -> str:
+    """Format phone number for VoiceLink SIP Outbound gateway (expects 10-digit national number)."""
+    digits = "".join(c for c in phone if c.isdigit())
+    if digits.startswith("91") and len(digits) == 12:
+        digits = digits[2:]
+    elif digits.startswith("0") and len(digits) == 11:
+        digits = digits[1:]
+    return digits
+
 
 agent_is_speaking = False
 
@@ -452,20 +458,21 @@ async def entrypoint(ctx: JobContext):
             or "ST_UFXhWiBxXpbg"
         )
         if trunk_id:
-            logger.info(f"[OUTBOUND] Dialing {phone_number} via SIP Trunk ({trunk_id})...")
+            dial_target = format_number_for_voicelink(phone_number)
+            logger.info(f"[OUTBOUND] Dialing {dial_target} (raw: {phone_number}) via SIP Trunk ({trunk_id})...")
             try:
                 from livekit.api import CreateSIPParticipantRequest as _SipReq
                 sip_req = _SipReq(
                     sip_trunk_id=trunk_id,
-                    sip_call_to=phone_number,
+                    sip_call_to=dial_target,
                     room_name=ctx.room.name,
-                    participant_identity=f"sip_{phone_number.replace('+', '')}",
+                    participant_identity=f"sip_{dial_target}",
                     participant_name="Recipient",
                 )
                 await ctx.api.sip.create_sip_participant(sip_req)
-                logger.info(f"[OUTBOUND] SIP call successfully initiated to {phone_number}")
+                logger.info(f"[OUTBOUND] SIP call successfully initiated to {dial_target}")
             except Exception as e:
-                logger.error(f"[OUTBOUND] Failed to create SIP participant for {phone_number}: {e}")
+                logger.error(f"[OUTBOUND] Failed to create SIP participant for {dial_target}: {e}")
         else:
             logger.error("[OUTBOUND] Cannot dial: sip_trunk_id missing in DB and env")
 
