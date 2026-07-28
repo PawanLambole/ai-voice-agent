@@ -154,27 +154,45 @@ def read_config() -> dict:
 def write_config(data: dict):
     """
     Save config to both Supabase DB (primary) and config.json (local backup).
+    API secrets are ONLY saved to Supabase DB — never written to config.json.
+    config.json only holds non-sensitive behavioral settings.
     """
-    current = _read_local_config()
-    current.update(data)
+    # Keys that must NEVER be written to config.json (secrets → DB only)
+    _SECRET_KEYS = {
+        "supabase_url", "supabase_key",
+        "livekit_url", "sip_trunk_id", "livekit_api_key", "livekit_api_secret",
+        "groq_api_key", "openai_api_key", "anthropic_api_key",
+        "gemini_api_key", "google_api_key",
+        "sarvam_api_key", "deepgram_api_key",
+        "cal_api_key", "cal_event_type_id",
+        "telegram_bot_token", "telegram_chat_id",
+        "vobiz_sip_domain", "vobiz_username", "vobiz_password", "vobiz_outbound_number",
+    }
 
-    # 1. Write local backup
+    # 1. Write local backup — behavioral settings only
+    current_local = _read_local_config()
+    # Update behavioral settings from the submitted data
+    for k, v in data.items():
+        if k not in _SECRET_KEYS:
+            current_local[k] = v
+    # Strip any secrets that may have previously leaked into config.json
+    for k in _SECRET_KEYS:
+        current_local.pop(k, None)
     try:
         with open(CONFIG_FILE, "w") as f:
-            json.dump(current, f, indent=4)
+            json.dump(current_local, f, indent=4)
     except Exception as e:
         logger.warning(f"Could not write config.json: {e}")
 
-    # Remove connection-only keys so they never leak into database payload
-    db_payload = {k: v for k, v in current.items() if k not in ("supabase_url", "supabase_key")}
-
-    # 2. Write to Supabase DB
-    ensure_supabase_env_from(current)
+    # 2. Write FULL data (including secrets) to Supabase DB
+    db_payload = {k: v for k, v in data.items() if k not in ("supabase_url", "supabase_key")}
+    ensure_supabase_env_from(data)
     try:
         import db
         db.save_config_to_db(db_payload)
     except Exception as e:
         logger.warning(f"Could not save config to DB: {e}")
+
 
 
 def ensure_supabase_env_from(cfg: dict):
