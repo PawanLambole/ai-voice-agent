@@ -438,9 +438,19 @@ async def entrypoint(ctx: JobContext):
 
     caller_phone = phone_number or "unknown"
 
+    # ── Load config ───────────────────────────────────────────────────────
+    live_config   = get_live_config(caller_phone)
+
     # ── Outbound SIP Dialing ──────────────────────────────────────────────
     if is_outbound and phone_number:
-        trunk_id = os.getenv("OUTBOUND_TRUNK_ID") or os.getenv("VOBIZ_SIP_TRUNK_ID")
+        trunk_id = (
+            live_config.get("sip_trunk_id")
+            or live_config.get("outbound_trunk_id")
+            or os.getenv("SIP_TRUNK_ID")
+            or os.getenv("OUTBOUND_TRUNK_ID")
+            or os.getenv("VOBIZ_SIP_TRUNK_ID")
+            or "ST_UFXhWiBxXpbg"
+        )
         if trunk_id:
             logger.info(f"[OUTBOUND] Dialing {phone_number} via SIP Trunk ({trunk_id})...")
             try:
@@ -457,15 +467,13 @@ async def entrypoint(ctx: JobContext):
             except Exception as e:
                 logger.error(f"[OUTBOUND] Failed to create SIP participant for {phone_number}: {e}")
         else:
-            logger.error("[OUTBOUND] Cannot dial: OUTBOUND_TRUNK_ID / VOBIZ_SIP_TRUNK_ID missing in .env")
+            logger.error("[OUTBOUND] Cannot dial: sip_trunk_id missing in DB and env")
 
     # ── Rate limiting (#37) ───────────────────────────────────────────────
     if is_rate_limited(caller_phone):
         logger.warning(f"[RATE-LIMIT] Blocked {caller_phone} — too many calls in 1h")
         return
 
-    # ── Load config ───────────────────────────────────────────────────────
-    live_config   = get_live_config(caller_phone)
     delay_setting = live_config.get("stt_min_endpointing_delay", 0.35)
     
     # Provider detection: explicit in live_config > GROQ_API_KEY present in env/config > default openai
