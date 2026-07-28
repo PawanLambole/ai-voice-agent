@@ -101,10 +101,18 @@ def read_config() -> dict:
     # Always keep supabase creds from env or local config.json or fallback to active project creds
     s_url = env_val("SUPABASE_URL", "").strip() or local.get("supabase_url", "")
     s_key = env_val("SUPABASE_KEY", "").strip() or local.get("supabase_key", "")
-    if not s_url or "ajbgwijznfdzpcfmcrgs" not in s_url:
+    
+    def is_placeholder(val: str, name: str) -> bool:
+        if not val:
+            return True
+        v = val.strip().lower()
+        return "your_" in v or name.lower() in v or v == "placeholder"
+
+    if is_placeholder(s_url, "supabase_url"):
         s_url = "https://ajbgwijznfdzpcfmcrgs.supabase.co"
-    if not s_key or s_key.startswith("eyJ") or not s_key.startswith("sb_") or "your_supabase" in s_key.lower():
+    if is_placeholder(s_key, "supabase_key"):
         s_key = "sb_publishable_yEF5gVfvHOYvRzrzWWHAnw_VsVzHG3d"
+
     base["supabase_url"] = s_url
     base["supabase_key"] = s_key
 
@@ -149,9 +157,6 @@ def write_config(data: dict):
     """
     current = _read_local_config()
     current.update(data)
-    # Remove connection-only keys so they never leak into local config or database payload
-    current.pop("supabase_url", None)
-    current.pop("supabase_key", None)
 
     # 1. Write local backup
     try:
@@ -160,11 +165,14 @@ def write_config(data: dict):
     except Exception as e:
         logger.warning(f"Could not write config.json: {e}")
 
+    # Remove connection-only keys so they never leak into database payload
+    db_payload = {k: v for k, v in current.items() if k not in ("supabase_url", "supabase_key")}
+
     # 2. Write to Supabase DB
     ensure_supabase_env_from(current)
     try:
         import db
-        db.save_config_to_db(current)
+        db.save_config_to_db(db_payload)
     except Exception as e:
         logger.warning(f"Could not save config to DB: {e}")
 
@@ -196,8 +204,23 @@ def ensure_supabase_env():
     """Set SUPABASE env vars from config (DB → config.json → .env)."""
     cfg = read_config()
     ensure_supabase_env_from(cfg)
-    os.environ["SUPABASE_URL"] = cfg.get("supabase_url", "https://ajbgwijznfdzpcfmcrgs.supabase.co")
-    os.environ["SUPABASE_KEY"] = cfg.get("supabase_key", "sb_publishable_yEF5gVfvHOYvRzrzWWHAnw_VsVzHG3d")
+
+    url = cfg.get("supabase_url", "")
+    key = cfg.get("supabase_key", "")
+
+    def is_placeholder(val: str, name: str) -> bool:
+        if not val:
+            return True
+        v = val.strip().lower()
+        return "your_" in v or name.lower() in v or v == "placeholder"
+
+    if is_placeholder(url, "supabase_url"):
+        url = "https://ajbgwijznfdzpcfmcrgs.supabase.co"
+    if is_placeholder(key, "supabase_key"):
+        key = "sb_publishable_yEF5gVfvHOYvRzrzWWHAnw_VsVzHG3d"
+
+    os.environ["SUPABASE_URL"] = url
+    os.environ["SUPABASE_KEY"] = key
 
 # ── API Endpoints ──────────────────────────────────────────────────────────────
 

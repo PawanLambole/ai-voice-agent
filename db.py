@@ -41,13 +41,20 @@ DEFAULT_SUPABASE_KEY = "sb_publishable_yEF5gVfvHOYvRzrzWWHAnw_VsVzHG3d"
 
 def get_supabase() -> Client | None:
     url = os.environ.get("SUPABASE_URL", "").strip()
-    if not url or "ajbgwijznfdzpcfmcrgs" not in url:
+    key = os.environ.get("SUPABASE_KEY", "").strip()
+
+    def is_placeholder(val: str, name: str) -> bool:
+        if not val:
+            return True
+        v = val.strip().lower()
+        return "your_" in v or name.lower() in v or v == "placeholder"
+
+    if is_placeholder(url, "supabase_url"):
         url = DEFAULT_SUPABASE_URL
 
-    key = os.environ.get("SUPABASE_KEY", "").strip()
-    # Force switch if key is missing, placeholder, legacy JWT (eyJ...), or not starting with sb_
-    if not key or key.startswith("eyJ") or not key.startswith("sb_") or "your_supabase" in key.lower():
+    if is_placeholder(key, "supabase_key"):
         key = DEFAULT_SUPABASE_KEY
+
     if not url or not key:
         return None
     try:
@@ -455,9 +462,10 @@ def fetch_bookings() -> list:
                 .limit(200)
                 .execute()
             )
-            raw = res.data or []
+            raw_list = res.data or []
+            rows: list[dict] = [r for r in raw_list if isinstance(r, dict)]
             return [
-                r for r in raw
+                r for r in rows
                 if r.get("was_booked") is True or any(kw in str(r.get("summary", "")).lower() for kw in ["confirm", "book", "schedul"])
             ]
         except Exception as e:
