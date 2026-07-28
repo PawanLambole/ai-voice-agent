@@ -353,12 +353,6 @@ def save_call_log(
        retry with only the base columns so the call is never silently lost.
     3. Retry up to 3× on transient SSL/network errors with exponential backoff.
     """
-    url = os.environ.get("SUPABASE_URL", "")
-    key = os.environ.get("SUPABASE_KEY", "")
-    if not url or not key:
-        logger.info(f"Supabase not configured. Local log → {phone} {duration}s")
-        return {"success": False, "message": "Supabase not configured"}
-
     supabase = get_supabase()
     if not supabase:
         return {"success": False, "message": "Supabase client failed"}
