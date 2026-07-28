@@ -36,9 +36,15 @@ def _is_schema_error(err_str: str) -> bool:
 
 # ─── Client ───────────────────────────────────────────────────────────────────
 
+DEFAULT_SUPABASE_URL = "https://ajbgwijznfdzpcfmcrgs.supabase.co"
+DEFAULT_SUPABASE_KEY = "sb_publishable_yEF5gVfvHOYvRzrzWWHAnw_VsVzHG3d"
+
 def get_supabase() -> Client | None:
-    url = os.environ.get("SUPABASE_URL", "")
-    key = os.environ.get("SUPABASE_KEY", "")
+    url = (os.environ.get("SUPABASE_URL", "").strip() or DEFAULT_SUPABASE_URL)
+    key = os.environ.get("SUPABASE_KEY", "").strip()
+    # Fallback if key is missing, placeholder, or expired legacy JWT
+    if not key or "your_supabase" in key.lower() or "yplraarslqarwuedzlfr" in key:
+        key = DEFAULT_SUPABASE_KEY
     if not url or not key:
         return None
     try:

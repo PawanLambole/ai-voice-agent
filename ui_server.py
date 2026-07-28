@@ -98,9 +98,15 @@ def read_config() -> dict:
     for k, v in local.items():
         if v not in ("", None):
             base[k] = v
-    # Always keep supabase creds from env or local config.json
-    base["supabase_url"] = env_val("SUPABASE_URL", "") or local.get("supabase_url", "")
-    base["supabase_key"] = env_val("SUPABASE_KEY", "") or local.get("supabase_key", "")
+    # Always keep supabase creds from env or local config.json or fallback to active project creds
+    s_url = env_val("SUPABASE_URL", "") or local.get("supabase_url", "")
+    s_key = env_val("SUPABASE_KEY", "") or local.get("supabase_key", "")
+    if not s_url:
+        s_url = "https://ajbgwijznfdzpcfmcrgs.supabase.co"
+    if not s_key or "your_supabase" in s_key.lower() or "yplraarslqarwuedzlfr" in s_key:
+        s_key = "sb_publishable_yEF5gVfvHOYvRzrzWWHAnw_VsVzHG3d"
+    base["supabase_url"] = s_url
+    base["supabase_key"] = s_key
 
     # Layer 1: Supabase DB (highest priority — set via UI, survives redeployments)
     ensure_supabase_env_from(base)
