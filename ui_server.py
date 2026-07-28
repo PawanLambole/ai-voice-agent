@@ -1859,9 +1859,12 @@ async function saveConfigCategory(cat) {{
   }} else if (cat === 'ai') {{
     Object.assign(payload, {{
       groq_api_key: get('groq_api_key'),
+      gemini_api_key: get('gemini_api_key'),
+      google_api_key: get('gemini_api_key'),
       openai_api_key: get('openai_api_key'),
       anthropic_api_key: get('anthropic_api_key'),
       sarvam_api_key: get('sarvam_api_key'),
+      deepgram_api_key: get('deepgram_api_key'),
     }});
   }} else if (cat === 'telegram') {{
     Object.assign(payload, {{
@@ -1948,7 +1951,7 @@ async function initCustomCreds() {{
       'first_line', 'agent_instructions', 'stt_min_endpointing_delay',
       'llm_provider', 'llm_model', 'tts_voice', 'tts_language',
       'livekit_url', 'sip_trunk_id', 'livekit_api_key', 'livekit_api_secret',
-      'groq_api_key', 'openai_api_key', 'anthropic_api_key', 'sarvam_api_key',
+      'groq_api_key', 'gemini_api_key', 'google_api_key', 'openai_api_key', 'anthropic_api_key', 'sarvam_api_key', 'deepgram_api_key',
       'cal_api_key', 'cal_event_type_id', 'telegram_bot_token', 'telegram_chat_id',
       'supabase_url', 'supabase_key'
     ]);
@@ -1978,6 +1981,7 @@ function onProviderChange() {{
   optgroups.forEach(group => {{
     const label = (group.label || '').toLowerCase();
     const isMatch = (provider === 'groq' && label.includes('groq')) ||
+                    (provider === 'google' && label.includes('gemini')) ||
                     (provider === 'openai' && label.includes('openai')) ||
                     (provider === 'claude' && label.includes('claude'));
 
@@ -1992,6 +1996,7 @@ function onProviderChange() {{
   if (!matchFound) {{
     const defaults = {{
       groq: 'llama-3.3-70b-versatile',
+      google: 'gemini-2.5-flash',
       openai: 'gpt-4o-mini',
       claude: 'claude-haiku-3-5-latest'
     }};
