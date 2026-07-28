@@ -1,5 +1,6 @@
 import os
 import time
+import json
 import logging
 from datetime import datetime
 from supabase import create_client, Client
@@ -298,7 +299,7 @@ def update_knowledge_entry(entry_id: str, updates: dict) -> dict:
     # Fallback local update
     local_kb = _read_local_kb()
     for e in local_kb:
-        if str(e.get("id")) == str(entry_id):
+        if str(e.get("id")) == entry_id:
             e.update(safe_updates)
             break
     _write_local_kb(local_kb)
@@ -315,10 +316,9 @@ def delete_knowledge_entry(entry_id: str) -> dict:
             logger.warning(f"Could not delete entry from DB: {e}")
 
     local_kb = _read_local_kb()
-    local_kb = [e for e in local_kb if str(e.get("id")) != str(entry_id)]
+    local_kb = [e for e in local_kb if str(e.get("id")) != entry_id]
     _write_local_kb(local_kb)
     return {"success": True}
-    return {"success": False, "message": "Max retries exceeded"}
 
 
 # ─── save_call_log ────────────────────────────────────────────────────────────
