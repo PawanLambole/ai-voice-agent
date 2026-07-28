@@ -77,23 +77,33 @@ def is_rate_limited(phone: str) -> bool:
 
 # ── Config loader (#17 partial — per-client path awareness) ───────────────────
 def get_live_config(phone_number: str | None = None):
-    """Load config — tries per-client file first, then default config.json."""
+    """Load config — tries Supabase DB first, then per-client file, then default config.json."""
     config = {}
-    paths = []
-    if phone_number and phone_number != "unknown":
-        clean = phone_number.replace("+", "").replace(" ", "")
-        paths.append(f"configs/{clean}.json")
-    paths += ["configs/default.json", CONFIG_FILE]
+    try:
+        import db
+        db_cfg = db.load_config_from_db()
+        if db_cfg:
+            config = db_cfg
+            logger.info(f"[CONFIG] Loaded live config from Supabase DB ({len(db_cfg)} keys).")
+    except Exception as e:
+        logger.warning(f"[CONFIG] Could not load from Supabase DB: {e}")
 
-    for path in paths:
-        if os.path.exists(path):
-            try:
-                with open(path, "r") as f:
-                    config = json.load(f)
-                    logger.info(f"[CONFIG] Loaded: {path}")
-                    break
-            except Exception as e:
-                logger.error(f"[CONFIG] Failed to read {path}: {e}")
+    if not config:
+        paths = []
+        if phone_number and phone_number != "unknown":
+            clean = phone_number.replace("+", "").replace(" ", "")
+            paths.append(f"configs/{clean}.json")
+        paths += ["configs/default.json", CONFIG_FILE]
+
+        for path in paths:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r") as f:
+                        config = json.load(f)
+                        logger.info(f"[CONFIG] Loaded: {path}")
+                        break
+                except Exception as e:
+                    logger.error(f"[CONFIG] Failed to read {path}: {e}")
 
     return {
         "agent_instructions":       config.get("agent_instructions", ""),
