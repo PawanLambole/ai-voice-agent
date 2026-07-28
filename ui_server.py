@@ -655,11 +655,15 @@ async def get_dashboard():
     has_groq = bool(config.get("groq_api_key") or os.getenv("GROQ_API_KEY"))
     has_openai = bool(config.get("openai_api_key") or os.getenv("OPENAI_API_KEY"))
     has_claude = bool(config.get("anthropic_api_key") or os.getenv("ANTHROPIC_API_KEY"))
+    has_sarvam = bool(config.get("sarvam_api_key") or os.getenv("SARVAM_API_KEY"))
+    has_deepgram = bool(config.get("deepgram_api_key") or os.getenv("DEEPGRAM_API_KEY"))
 
-    # Fallback if no keys set at all: show groq and openai
+    # Fallback if no keys set at all
     if not (has_groq or has_openai or has_claude):
         has_groq = True
         has_openai = True
+    if not (has_sarvam or has_deepgram or has_openai):
+        has_sarvam = True
 
     provider_options = []
     if has_groq:
@@ -692,6 +696,41 @@ async def get_dashboard():
             </optgroup>''')
 
     model_optgroups_html = "\n".join(model_optgroups)
+
+    voice_optgroups = []
+    if has_sarvam:
+        voice_optgroups.append(f'''<optgroup label="Sarvam AI (Indian Languages)">
+              <option value="kavya" {sel('tts_voice','kavya')}>Kavya — Female, Friendly (Hindi/Hinglish)</option>
+              <option value="ritu" {sel('tts_voice','ritu')}>Ritu — Female, Soft</option>
+              <option value="priya" {sel('tts_voice','priya')}>Priya — Female, Warm</option>
+              <option value="neha" {sel('tts_voice','neha')}>Neha — Female, Energetic</option>
+              <option value="shreya" {sel('tts_voice','shreya')}>Shreya — Female, Clear</option>
+              <option value="rahul" {sel('tts_voice','rahul')}>Rahul — Male, Deep</option>
+              <option value="rohan" {sel('tts_voice','rohan')}>Rohan — Male, Balanced</option>
+              <option value="dev" {sel('tts_voice','dev')}>Dev — Male, Professional</option>
+              <option value="shubh" {sel('tts_voice','shubh')}>Shubh — Male, Formal</option>
+              <option value="amit" {sel('tts_voice','amit')}>Amit — Male, Casual</option>
+            </optgroup>''')
+    if has_deepgram:
+        voice_optgroups.append(f'''<optgroup label="Deepgram Aura Voices">
+              <option value="aura-stella-en" {sel('tts_voice','aura-stella-en')}>Aura Stella — Female, Expressive</option>
+              <option value="aura-asteria-en" {sel('tts_voice','aura-asteria-en')}>Aura Asteria — Female, Clear</option>
+              <option value="aura-luna-en" {sel('tts_voice','aura-luna-en')}>Aura Luna — Female, Soft</option>
+              <option value="aura-zeus-en" {sel('tts_voice','aura-zeus-en')}>Aura Zeus — Male, Deep</option>
+              <option value="aura-orion-en" {sel('tts_voice','aura-orion-en')}>Aura Orion — Male, Natural</option>
+              <option value="aura-arcas-en" {sel('tts_voice','aura-arcas-en')}>Aura Arcas — Male, Calm</option>
+            </optgroup>''')
+    if has_openai:
+        voice_optgroups.append(f'''<optgroup label="OpenAI TTS Voices">
+              <option value="alloy" {sel('tts_voice','alloy')}>Alloy — Neutral</option>
+              <option value="echo" {sel('tts_voice','echo')}>Echo — Male</option>
+              <option value="fable" {sel('tts_voice','fable')}>Fable — Accent</option>
+              <option value="onyx" {sel('tts_voice','onyx')}>Onyx — Deep Male</option>
+              <option value="nova" {sel('tts_voice','nova')}>Nova — Female</option>
+              <option value="shimmer" {sel('tts_voice','shimmer')}>Shimmer — Female</option>
+            </optgroup>''')
+
+    voice_optgroups_html = "\n".join(voice_optgroups)
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -1049,16 +1088,7 @@ async def get_dashboard():
         <div class="form-group">
           <label>Speaker Voice</label>
           <select id="tts_voice">
-            <option value="kavya" {sel('tts_voice','kavya')}>Kavya — Female, Friendly</option>
-            <option value="rohan" {sel('tts_voice','rohan')}>Rohan — Male, Balanced</option>
-            <option value="priya" {sel('tts_voice','priya')}>Priya — Female, Warm</option>
-            <option value="shubh" {sel('tts_voice','shubh')}>Shubh — Male, Formal</option>
-            <option value="shreya" {sel('tts_voice','shreya')}>Shreya — Female, Clear</option>
-            <option value="ritu" {sel('tts_voice','ritu')}>Ritu — Female, Soft</option>
-            <option value="rahul" {sel('tts_voice','rahul')}>Rahul — Male, Deep</option>
-            <option value="amit" {sel('tts_voice','amit')}>Amit — Male, Casual</option>
-            <option value="neha" {sel('tts_voice','neha')}>Neha — Female, Energetic</option>
-            <option value="dev" {sel('tts_voice','dev')}>Dev — Male, Professional</option>
+{voice_optgroups_html}
           </select>
         </div>
         <div class="form-group">
