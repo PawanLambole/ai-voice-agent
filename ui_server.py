@@ -79,6 +79,8 @@ def read_config() -> dict:
         "anthropic_api_key": env_val("ANTHROPIC_API_KEY", ""),
         "sarvam_api_key": env_val("SARVAM_API_KEY", ""),
         "deepgram_api_key": env_val("DEEPGRAM_API_KEY", ""),
+        "gemini_api_key": env_val("GEMINI_API_KEY", env_val("GOOGLE_API_KEY", "")),
+        "google_api_key": env_val("GOOGLE_API_KEY", env_val("GEMINI_API_KEY", "")),
         "cal_api_key": env_val("CAL_API_KEY", ""),
         "cal_event_type_id": env_val("CAL_EVENT_TYPE_ID", ""),
         "telegram_bot_token": env_val("TELEGRAM_BOT_TOKEN", ""),
@@ -168,6 +170,8 @@ def ensure_supabase_env_from(cfg: dict):
         ("livekit_api_key", "LIVEKIT_API_KEY"),
         ("livekit_api_secret", "LIVEKIT_API_SECRET"),
         ("groq_api_key", "GROQ_API_KEY"),
+        ("gemini_api_key", "GEMINI_API_KEY"),
+        ("google_api_key", "GOOGLE_API_KEY"),
         ("sarvam_api_key", "SARVAM_API_KEY"),
         ("deepgram_api_key", "DEEPGRAM_API_KEY"),
         ("vobiz_sip_domain", "VOBIZ_SIP_DOMAIN"),
@@ -653,13 +657,14 @@ async def get_dashboard():
         return "selected" if config.get(key) == val else ""
 
     has_groq = bool(config.get("groq_api_key") or os.getenv("GROQ_API_KEY"))
+    has_gemini = bool(config.get("gemini_api_key") or config.get("google_api_key") or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
     has_openai = bool(config.get("openai_api_key") or os.getenv("OPENAI_API_KEY"))
     has_claude = bool(config.get("anthropic_api_key") or os.getenv("ANTHROPIC_API_KEY"))
     has_sarvam = bool(config.get("sarvam_api_key") or os.getenv("SARVAM_API_KEY"))
     has_deepgram = bool(config.get("deepgram_api_key") or os.getenv("DEEPGRAM_API_KEY"))
 
     # Fallback if no keys set at all
-    if not (has_groq or has_openai or has_claude):
+    if not (has_groq or has_gemini or has_openai or has_claude):
         has_groq = True
         has_openai = True
     if not (has_sarvam or has_deepgram or has_openai):
@@ -668,6 +673,8 @@ async def get_dashboard():
     provider_options = []
     if has_groq:
         provider_options.append(f'<option value="groq" {sel("llm_provider","groq")}>Groq (Ultra-Fast &amp; High Quality)</option>')
+    if has_gemini:
+        provider_options.append(f'<option value="google" {sel("llm_provider","google")}>Google Gemini (Ultra-Fast &amp; High Intelligence)</option>')
     if has_openai:
         provider_options.append(f'<option value="openai" {sel("llm_provider","openai")}>OpenAI</option>')
     if has_claude:
@@ -682,6 +689,12 @@ async def get_dashboard():
               <option value="llama-3.1-8b-instant" {sel('llm_model','llama-3.1-8b-instant')}>llama-3.1-8b-instant (Ultra-Fast)</option>
               <option value="mixtral-8x7b-32768" {sel('llm_model','mixtral-8x7b-32768')}>mixtral-8x7b-32768</option>
               <option value="gemma2-9b-it" {sel('llm_model','gemma2-9b-it')}>gemma2-9b-it</option>
+            </optgroup>''')
+    if has_gemini:
+        model_optgroups.append(f'''<optgroup label="Google Gemini Models">
+              <option value="gemini-2.5-flash" {sel('llm_model','gemini-2.5-flash')}>gemini-2.5-flash — Fast &amp; Latest</option>
+              <option value="gemini-2.0-flash" {sel('llm_model','gemini-2.0-flash')}>gemini-2.0-flash — Balanced</option>
+              <option value="gemini-1.5-pro" {sel('llm_model','gemini-1.5-pro')}>gemini-1.5-pro — Deep Intelligence</option>
             </optgroup>''')
     if has_openai:
         model_optgroups.append(f'''<optgroup label="OpenAI Models">
@@ -1422,9 +1435,11 @@ async def get_dashboard():
     <div class="modal-sub">API keys for LLM and Speech services</div>
     <div class="form-row" style="margin-bottom:14px;">
       <div class="form-group"><label>Groq API Key</label><input type="password" id="groq_api_key" value="{config.get('groq_api_key', '')}"></div>
+      <div class="form-group"><label>Google Gemini API Key</label><input type="password" id="gemini_api_key" value="{config.get('gemini_api_key', '')}"></div>
       <div class="form-group"><label>OpenAI API Key</label><input type="password" id="openai_api_key" value="{config.get('openai_api_key', '')}"></div>
       <div class="form-group"><label>Anthropic API Key</label><input type="password" id="anthropic_api_key" value="{config.get('anthropic_api_key', '')}"></div>
       <div class="form-group"><label>Sarvam API Key</label><input type="password" id="sarvam_api_key" value="{config.get('sarvam_api_key', '')}"></div>
+      <div class="form-group"><label>Deepgram API Key</label><input type="password" id="deepgram_api_key" value="{config.get('deepgram_api_key', '')}"></div>
     </div>
     <!-- Extra Fields Container -->
     <div id="extra-cred-ai" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
