@@ -458,7 +458,9 @@ async def entrypoint(ctx: JobContext):
             or "ST_UFXhWiBxXpbg"
         )
         if trunk_id:
+            # Target number to dial — VoiceLink expects 10-digit national format
             dial_target = format_number_for_voicelink(phone_number)
+            # Our outbound caller ID shown to the recipient
             caller_id = (
                 live_config.get("vobiz_outbound_number")
                 or os.getenv("VOBIZ_OUTBOUND_NUMBER")
@@ -469,8 +471,9 @@ async def entrypoint(ctx: JobContext):
                 from livekit.api import CreateSIPParticipantRequest as _SipReq
                 sip_req = _SipReq(
                     sip_trunk_id=trunk_id,
-                    sip_call_to=dial_target,
-                    sip_number=caller_id,
+                    # For VoiceLink: sip_number = destination to CALL, sip_call_to = our caller ID
+                    sip_number=dial_target,
+                    sip_call_to=caller_id,
                     room_name=ctx.room.name,
                     participant_identity=f"sip_{dial_target}",
                     participant_name="Recipient",
@@ -481,6 +484,7 @@ async def entrypoint(ctx: JobContext):
                 logger.error(f"[OUTBOUND] Failed to create SIP participant for {dial_target}: {e}")
         else:
             logger.error("[OUTBOUND] Cannot dial: sip_trunk_id missing in DB and env")
+
 
     # ── Rate limiting (#37) ───────────────────────────────────────────────
     if is_rate_limited(caller_phone):
