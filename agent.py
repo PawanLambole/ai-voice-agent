@@ -458,22 +458,26 @@ async def entrypoint(ctx: JobContext):
             or "ST_UFXhWiBxXpbg"
         )
         if trunk_id:
-            # Target number to dial — VoiceLink expects 10-digit national format
-            dial_target = format_number_for_voicelink(phone_number)
-            # Our outbound caller ID shown to the recipient
+            # VoiceLink expects full digits without +: e.g. 919766573966
+            digits = "".join(c for c in phone_number if c.isdigit())
+            if not digits.startswith("91") and len(digits) == 10:
+                digits = "91" + digits   # add India country code
+            dial_target = digits         # e.g. 919766573966
+
+            # Our outbound caller ID shown to recipient (also without +)
             caller_id = (
                 live_config.get("vobiz_outbound_number")
                 or os.getenv("VOBIZ_OUTBOUND_NUMBER")
                 or "919429391395"
             ).replace("+", "")
+
             logger.info(f"[OUTBOUND] Dialing {dial_target} (CallerID: {caller_id}) via SIP Trunk ({trunk_id})...")
             try:
                 from livekit.api import CreateSIPParticipantRequest as _SipReq
                 sip_req = _SipReq(
                     sip_trunk_id=trunk_id,
-                    # For VoiceLink: sip_number = destination to CALL, sip_call_to = our caller ID
-                    sip_number=dial_target,
-                    sip_call_to=caller_id,
+                    sip_call_to=dial_target,   # destination number (who to CALL)
+                    sip_number=caller_id,       # our caller ID (shown to recipient)
                     room_name=ctx.room.name,
                     participant_identity=f"sip_{dial_target}",
                     participant_name="Recipient",
