@@ -1,6 +1,6 @@
 # LiveKit Outbound Calling Agent
 
-This project provides a production-ready solution for making outbound AI phone calls using LiveKit and Vobiz SIP trunks. The AI agent can place calls, wait for an answer, and hold a natural conversation with the recipient.
+This project provides a production-ready solution for making outbound AI phone calls using LiveKit and VoiceLink telephony. The AI agent can place calls, wait for an answer, and hold a natural conversation with the recipient.
 
 ## 📂 Project Structure
 
@@ -8,7 +8,8 @@ This project provides a production-ready solution for making outbound AI phone c
 |------|-------------|
 | `agent.py` | The main AI worker. It runs in the background, waits for dispatch jobs, and places outbound calls. |
 | `make_call.py` | A utility script to trigger calls. It dispatches the agent to a unique room with the target phone number. |
-| `setup_trunk.py` | Script to configure the LiveKit SIP Trunk with Vobiz credentials. |
+| `setup_trunk.py` | Script to configure the LiveKit SIP Trunk with VoiceLink credentials. |
+| `voicelink_client.py` | VoiceLink REST API client and phone number normalizer. |
 | `transfer_call.md` | Guide for configuring and using SIP transfers. |
 | `.env.example` | Template for environment variables and secrets. |
 | `requirements.txt` | List of Python dependencies. |
@@ -23,25 +24,25 @@ Ensure you have the following installed:
 - **Python 3.9+**
 - **uv** (recommended for fast package management) - [Install uv](https://github.com/astral-sh/uv)
 
-### 2. LiveKit & Vobiz Credentials
+### 2. LiveKit & VoiceLink Credentials
 
 You will need the following accounts:
 
 1.  **LiveKit Cloud Account**: Get your Project URL, API Key, and Secret from [cloud.livekit.io](https://cloud.livekit.io).
-2.  **Vobiz Account**:
-    *   Log in to the **Vobiz Console Platform**.
-    *   Navigate to your SIP Trunk settings to find:
-        *   SIP Domain (e.g., `xxx.sip.vobiz.ai`)
+2.  **VoiceLink Account**:
+    *   Log in to your VoiceLink platform.
+    *   Navigate to your SIP / API settings to find:
+        *   SIP Domain (e.g., `160.30.71.89:3300`)
         *   Username & Password
-    *   Get your DID Number (e.g., `+91...`).
-3.  **OpenAI / Deepgram Keys**:
-    *   OpenAI API Key (for LLM and optional TTS)
-    *   Deepgram API Key (for STT)
+        *   VoiceLink Reseller Bearer token (optional for REST API mode)
+    *   Get your DID Number (e.g., `919429391395`).
+3.  **OpenAI / Groq / Sarvam Keys**:
+    *   LLM & Voice API keys
 
 ### 3. Installation Steps
 
 1.  **Clone/Copy the project** to your local machine.
-2.  **Open a terminal** in the project folder (`livekit-outbound-calls`).
+2.  **Open a terminal** in the project folder (`InboundAIVoice`).
 3.  **Install dependencies** using `uv`:
 
     ```powershell
@@ -56,21 +57,20 @@ You will need the following accounts:
 
 1.  **Create your env file**:
     ```powershell
-    cp .env.example .env.local
+    cp .env.example .env
     ```
-2.  **Edit `.env.local`** and fill in your keys:
+2.  **Edit `.env`** and fill in your keys:
     ```env
     LIVEKIT_URL=wss://...
     LIVEKIT_API_KEY=...
     LIVEKIT_API_SECRET=...
-    OPENAI_API_KEY=...
-    DEEPGRAM_API_KEY=...
     
-    # SIP Config
-    VOBIZ_SIP_DOMAIN=...
-    VOBIZ_USERNAME=...
-    VOBIZ_PASSWORD=...
-    VOBIZ_OUTBOUND_NUMBER=+91...
+    # VoiceLink Telephony Config
+    VOICELINK_SIP_DOMAIN=160.30.71.89:3300
+    VOICELINK_USERNAME=...
+    VOICELINK_PASSWORD=...
+    VOICELINK_OUTBOUND_NUMBER=919429391395
+    VOICELINK_TECH_PREFIX=45454
     ```
 3.  **Set Trunk ID in `agent.py`**:
     *   If you haven't created a trunk yet, you'll need to create one using the LiveKit CLI or setup script.

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from dotenv import load_dotenv
@@ -12,6 +13,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ui-server")
 
 _agent_process = None
+_config_cache = None
+_config_cache_time = 0.0
+_CONFIG_CACHE_TTL = 10.0  # seconds
+
+def invalidate_config_cache():
+    global _config_cache, _config_cache_time
+    _config_cache = None
+    _config_cache_time = 0.0
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -49,7 +58,7 @@ def _read_local_config() -> dict:
     return {}
 
 
-def read_config() -> dict:
+def read_config(force_reload: bool = False) -> dict:
     """
     Merged config priority (highest → lowest):
       1. config.json  (lowest — behavioral defaults only, no secrets)
@@ -57,6 +66,10 @@ def read_config() -> dict:
       3. .env / Render environment variables (highest — always wins)
     Supabase credentials themselves always come from env (chicken-and-egg).
     """
+    global _config_cache, _config_cache_time
+    now = time.time()
+    if not force_reload and _config_cache is not None and (now - _config_cache_time) < _CONFIG_CACHE_TTL:
+        return _config_cache.copy()
 
     def env_val(env_key, default=""):
         return os.getenv(env_key, default)
@@ -131,10 +144,10 @@ def read_config() -> dict:
         "cal_event_type_id":        ("CAL_EVENT_TYPE_ID",),
         "telegram_bot_token":       ("TELEGRAM_BOT_TOKEN",),
         "telegram_chat_id":         ("TELEGRAM_CHAT_ID",),
-        "vobiz_sip_domain":         ("VOBIZ_SIP_DOMAIN", "VOICELINK_SIP_DOMAIN"),
-        "vobiz_username":           ("VOBIZ_USERNAME",),
-        "vobiz_password":           ("VOBIZ_PASSWORD",),
-        "vobiz_outbound_number":    ("VOBIZ_OUTBOUND_NUMBER",),
+        "voicelink_sip_domain":     ("VOICELINK_SIP_DOMAIN",),
+        "voicelink_username":       ("VOICELINK_USERNAME",),
+        "voicelink_password":       ("VOICELINK_PASSWORD",),
+        "voicelink_outbound_number":("VOICELINK_OUTBOUND_NUMBER",),
         "supabase_url":             ("SUPABASE_URL",),
         "supabase_key":             ("SUPABASE_KEY",),
     }
@@ -152,7 +165,7 @@ def read_config() -> dict:
         base["stt_min_endpointing_delay"] = 0.35
 
     # Fallback guard: Ensure first_line & agent_instructions are never empty or missing
-    default_first_line = "Hello ji... Main Rahul bol raha hoon, Kona Kona Interiors se. Ritesh Sir ne aapka number diya tha. Kya aapke paas 2 minute hain baat karne ke liye?"
+    default_first_line = "Hello ji, main Kona Kona Interiors se Shreya bol rahi hoon. Kya meri awaaz aa rahi hai?"
     if not base.get("first_line") or not str(base.get("first_line", "")).strip():
         base["first_line"] = default_first_line
 
@@ -163,12 +176,21 @@ def read_config() -> dict:
     provider = base.get("llm_provider", "groq" if os.getenv("GROQ_API_KEY") else "openai")
     model = base.get("llm_model", "")
     if provider == "groq" and (not model or model.startswith("gpt-") or model.startswith("claude-")):
-        base["llm_model"] = "llama-3.3-70b-versatile"
-    elif provider == "openai" and (not model or not model.startswith("gpt-")):
-        base["llm_model"] = "gpt-4o-mini"
-    elif provider == "claude" and (not model or not model.startswith("claude-")):
-        base["llm_model"] = "claude-haiku-3-5-latest"
+        base["llm_model"] = "llama-3.1-8b-instant"
+        
+    # Auto-infer TTS provider from the selected voice
+    tts_v = base.get("tts_voice", "kavya")
+    if tts_v.startswith("aura-"):
+        base["tts_provider"] = "deepgram"
+    elif tts_v in ("alloy", "echo", "fable", "onyx", "nova", "shimmer"):
+        base["tts_provider"] = "openai"
+    elif tts_v in ("21m00Tcm4TlvDq8ikWAM",): # Just an example ID for elevenlabs
+        base["tts_provider"] = "elevenlabs"
+    else:
+        base["tts_provider"] = "sarvam"
 
+    _config_cache = base.copy()
+    _config_cache_time = time.time()
     return base
 
 
@@ -179,6 +201,7 @@ def write_config(data: dict):
     API secrets are ONLY saved to Supabase DB — never written to config.json.
     config.json only holds non-sensitive behavioral settings.
     """
+    invalidate_config_cache()
     # Keys that must NEVER be written to config.json (secrets → DB only)
     _SECRET_KEYS = {
         "supabase_url", "supabase_key",
@@ -188,7 +211,7 @@ def write_config(data: dict):
         "sarvam_api_key", "deepgram_api_key",
         "cal_api_key", "cal_event_type_id",
         "telegram_bot_token", "telegram_chat_id",
-        "vobiz_sip_domain", "vobiz_username", "vobiz_password", "vobiz_outbound_number",
+        "voicelink_sip_domain", "voicelink_username", "voicelink_password", "voicelink_outbound_number",
     }
 
     # 1. Write local backup — behavioral settings only
@@ -228,10 +251,10 @@ def ensure_supabase_env_from(cfg: dict):
         ("google_api_key", "GOOGLE_API_KEY"),
         ("sarvam_api_key", "SARVAM_API_KEY"),
         ("deepgram_api_key", "DEEPGRAM_API_KEY"),
-        ("vobiz_sip_domain", "VOBIZ_SIP_DOMAIN"),
-        ("vobiz_username", "VOBIZ_USERNAME"),
-        ("vobiz_password", "VOBIZ_PASSWORD"),
-        ("vobiz_outbound_number", "VOBIZ_OUTBOUND_NUMBER"),
+        ("voicelink_sip_domain", "VOICELINK_SIP_DOMAIN"),
+        ("voicelink_username", "VOICELINK_USERNAME"),
+        ("voicelink_password", "VOICELINK_PASSWORD"),
+        ("voicelink_outbound_number", "VOICELINK_OUTBOUND_NUMBER"),
         ("supabase_url", "SUPABASE_URL"),
         ("supabase_key", "SUPABASE_KEY"),
     ]:
@@ -517,9 +540,12 @@ async def api_call_single(request: Request):
     """Dispatch a single outbound call via LiveKit."""
     ensure_agent_worker_running()
     data = await request.json()
-    phone = (data.get("phone") or "").strip()
-    if not phone.startswith("+"):
-        return {"status": "error", "message": "Phone number must start with + and country code"}
+    raw_phone = (data.get("phone") or "").strip()
+    if not raw_phone:
+        return {"status": "error", "message": "Phone number is required"}
+    from voicelink_client import normalize_indian_number
+    norm = normalize_indian_number(raw_phone)
+    phone = norm["full_e164"]
     config = read_config()
     try:
         import random, json as _json
@@ -538,7 +564,7 @@ async def api_call_single(request: Request):
             )
         )
         await lk.aclose()
-        logger.info(f"Outbound call dispatched to {phone}: {dispatch.id}")
+        logger.info(f"Outbound call dispatched to {phone} (national: {norm['national_10']}): {dispatch.id}")
         return {"status": "ok", "dispatch_id": dispatch.id, "room": room_name, "phone": phone}
     except Exception as e:
         logger.error(f"Call dispatch error: {e}")
@@ -550,17 +576,17 @@ async def api_call_bulk(request: Request):
     ensure_agent_worker_running()
     import random, json as _json
     from livekit import api as lkapi
+    from voicelink_client import normalize_indian_number
     data = await request.json()
-    numbers = [n.strip() for n in (data.get("numbers") or "").splitlines() if n.strip()]
+    raw_numbers = [n.strip() for n in (data.get("numbers") or "").splitlines() if n.strip()]
     results = []
     cfg = read_config()
     lk_url    = cfg.get("livekit_url")    or os.environ.get("LIVEKIT_URL","")
     lk_key    = cfg.get("livekit_api_key")    or os.environ.get("LIVEKIT_API_KEY","")
     lk_secret = cfg.get("livekit_api_secret") or os.environ.get("LIVEKIT_API_SECRET","")
-    for phone in numbers:
-        if not phone.startswith("+"):
-            results.append({"phone": phone, "status": "error", "message": "Must start with +"})
-            continue
+    for raw_phone in raw_numbers:
+        norm = normalize_indian_number(raw_phone)
+        phone = norm["full_e164"]
         try:
             lk = lkapi.LiveKitAPI(url=lk_url, api_key=lk_key, api_secret=lk_secret)
             room_name = f"call-{phone.replace('+','')}-{random.randint(1000,9999)}"
@@ -609,7 +635,7 @@ async def api_demo_token():
             lkapi.CreateAgentDispatchRequest(
                 agent_name="outbound-caller",
                 room=room_name,
-                metadata=_json.dumps({"phone_number": "demo", "is_demo": True}),
+                metadata=_json.dumps({"phone_number": "demo", "is_demo": True, "call_direction": "outbound"}),
             )
         )
         await lk.aclose()
@@ -621,19 +647,33 @@ async def api_demo_token():
 @app.get("/demo", response_class=HTMLResponse)
 async def get_demo_page():
     """Browser-based demo call page using LiveKit JS SDK."""
-    return HTMLResponse(content=DEMO_PAGE_HTML)
+    cfg = read_config()
+    voice = (cfg.get("tts_voice") or "kavya").lower()
+    voice_map = {
+        "kavya": "Kavya", "ritu": "Ritu", "priya": "Priya", "neha": "Neha", "shreya": "Shreya",
+        "rahul": "Rahul", "rohan": "Rohan", "dev": "Dev", "shubh": "Shubh", "amit": "Amit", "stella": "Stella"
+    }
+    agent_name = voice_map.get(voice, voice.split("-")[0].capitalize())
+    html_content = DEMO_PAGE_HTML.replace("Talk to Aryan", f"Talk to {agent_name}").replace("Talk to Rahul", f"Talk to {agent_name}")
+    return HTMLResponse(content=html_content)
 
 
 # ── Prometheus Metrics (#40) ──────────────────────────────────────────────────
 try:
-    from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+    from typing import Any
+    from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST, REGISTRY
     from fastapi.responses import Response as _Resp
 
-    _voice_calls_total   = Counter("voice_calls_total",   "Total calls handled by the agent")
-    _voice_calls_booked  = Counter("voice_calls_booked_total", "Calls that resulted in a booking")
-    _voice_call_duration = Histogram("voice_call_duration_seconds", "Call duration in seconds",
+    def _get_or_create_metric(cls: Any, name: str, documentation: str, **kwargs: Any) -> Any:
+        if hasattr(REGISTRY, "_names_to_collectors") and name in REGISTRY._names_to_collectors:
+            return REGISTRY._names_to_collectors[name]
+        return cls(name, documentation, **kwargs)
+
+    _voice_calls_total   = _get_or_create_metric(Counter, "voice_calls_total",   "Total calls handled by the agent")
+    _voice_calls_booked  = _get_or_create_metric(Counter, "voice_calls_booked_total", "Calls that resulted in a booking")
+    _voice_call_duration = _get_or_create_metric(Histogram, "voice_call_duration_seconds", "Call duration in seconds",
                                       buckets=[10, 30, 60, 120, 300, 600, 1200])
-    _voice_calls_active  = Gauge("voice_calls_active", "Currently active calls")
+    _voice_calls_active  = _get_or_create_metric(Gauge, "voice_calls_active", "Currently active calls")
 
     @app.get("/metrics", include_in_schema=False)
     def metrics():
@@ -670,10 +710,15 @@ def ensure_agent_worker_running():
     # Check if any agent.py process is currently running on the system
     try:
         import psutil
-        for proc in psutil.process_iter(['pid', 'cmdline']):
-            cmd = proc.info.get('cmdline') or []
-            if any("agent.py" in str(c) for c in cmd):
-                return True
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                pname = (proc.info.get('name') or '').lower()
+                if 'python' in pname:
+                    cmd = proc.cmdline()
+                    if any("agent.py" in c for c in cmd):
+                        return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
     except Exception:
         pass
 
@@ -1341,14 +1386,14 @@ async def get_dashboard():
   <div id="page-demo" class="page">
     <div class="page-header">
       <div class="page-title">🎙️ Web Demo Call</div>
-      <div class="page-sub">Talk directly to Rahul (AI Voice Agent) from your browser microphone</div>
+      <div class="page-sub" id="demoCardSub">Talk directly to AI Voice Agent from your browser microphone</div>
     </div>
     
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:960px;">
       <!-- Interactive Web Call Widget -->
       <div class="section-card" style="text-align:center;padding:36px 24px;">
         <div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#6c63ff,#a855f7);display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 20px;box-shadow:0 0 24px rgba(108,99,255,0.3);">🎙️</div>
-        <div style="font-size:20px;font-weight:700;margin-bottom:6px;">Talk to Rahul</div>
+        <div style="font-size:20px;font-weight:700;margin-bottom:6px;" id="demoCardTitle">Talk to AI Agent</div>
         <div style="font-size:13px;color:var(--muted);margin-bottom:28px;">Kona Kona Interiors · Karyah Training Calling Agent</div>
         
         <button class="btn btn-primary" id="dashStartBtn" onclick="startDashCall()" style="padding:14px 28px;font-size:15px;width:100%;justify-content:center;">📞 Start Demo Call</button>
@@ -1931,6 +1976,7 @@ async function saveConfig(section) {{
 
   const statusEl = document.getElementById('save-status-' + section);
   if (res.ok) {{
+    updateDemoAgentName();
     if (statusEl) {{
       statusEl.style.opacity = '1';
       setTimeout(() => {{ statusEl.style.opacity = '0'; }}, 2500);
@@ -2119,7 +2165,7 @@ function onProviderChange() {{
 
   if (!matchFound) {{
     const defaults = {{
-      groq: 'llama-3.3-70b-versatile',
+      groq: 'llama-3.1-8b-instant',
       google: 'gemini-2.5-flash',
       openai: 'gpt-4o-mini',
       claude: 'claude-haiku-3-5-latest'
@@ -2456,9 +2502,26 @@ function animateDashBars() {{
   setTimeout(animateDashBars, 150);
 }}
 
+async function updateDemoAgentName() {{
+  try {{
+    const cfg = await fetch('/api/config').then(r => r.json());
+    const voiceMap = {{
+      kavya: 'Kavya', ritu: 'Ritu', priya: 'Priya', neha: 'Neha', shreya: 'Shreya',
+      rahul: 'Rahul', rohan: 'Rohan', dev: 'Dev', shubh: 'Shubh', amit: 'Amit', stella: 'Stella'
+    }};
+    const voice = (cfg.tts_voice || 'kavya').toLowerCase();
+    const name = voiceMap[voice] || voice.split('-')[0].replace(/^\w/, c => c.toUpperCase());
+    const titleEl = document.getElementById('demoCardTitle');
+    if (titleEl) titleEl.textContent = 'Talk to ' + name;
+    const subEl = document.getElementById('demoCardSub');
+    if (subEl) subEl.textContent = 'Talk directly to ' + name + ' (AI Voice Agent) from your browser microphone';
+  }} catch(e) {{}}
+}}
+
 // ── Boot ────────────────────────────────────────────────────────────────────
 loadDashboard();
 initCustomCreds();
+updateDemoAgentName();
 setTimeout(onProviderChange, 50);
 </script>
 </body>

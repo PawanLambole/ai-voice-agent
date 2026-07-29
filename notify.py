@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 import httpx
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger("notify")
 
@@ -193,7 +193,7 @@ async def send_webhook(webhook_url: str, event_type: str, payload: dict) -> bool
                 webhook_url,
                 json={
                     "event":     event_type,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                     "data":      payload,
                 },
                 headers={"Content-Type": "application/json"},

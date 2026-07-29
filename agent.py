@@ -10,7 +10,9 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from typing import Annotated
+load_dotenv()
+
+from typing import Annotated, Any
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -56,6 +58,7 @@ from livekit.agents import (
 from livekit.plugins import openai, sarvam, silero
 
 import db
+from voicelink_client import normalize_indian_number, VoiceLinkClient
 
 CONFIG_FILE = "config.json"
 
@@ -192,7 +195,7 @@ class AgentTools(llm.ToolContext):
         self.caller_phone        = caller_phone
         self.caller_name         = caller_name
         self.booking_intent: dict | None = None
-        self.sip_domain          = os.getenv("VOBIZ_SIP_DOMAIN")
+        self.sip_domain          = os.getenv("VOICELINK_SIP_DOMAIN")
         self.ctx_api             = None
         self.room_name           = None
         self._sip_identity       = None
@@ -310,17 +313,19 @@ class AgentTools(llm.ToolContext):
 
 VOICE_PERSONA_MAP = {
     # Sarvam / ElevenLabs Female Voices
-    "kavya": {"name": "Kavya", "gender": "female", "verb": "bol rahi hoon", "ability": "kar sakti hoon"},
-    "ritu":  {"name": "Ritu",  "gender": "female", "verb": "bol rahi hoon", "ability": "kar sakti hoon"},
-    "priya": {"name": "Priya", "gender": "female", "verb": "bol rahi hoon", "ability": "kar sakti hoon"},
-    "neha":  {"name": "Neha",  "gender": "female", "verb": "bol rahi hoon", "ability": "kar sakti hoon"},
-    "stella":{"name": "Stella","gender": "female", "verb": "speaking",     "ability": "can help"},
+    "kavya":  {"name": "Kavya",  "gender": "female", "verb": "bol rahi hoon", "ability": "kar sakti hoon"},
+    "ritu":   {"name": "Ritu",   "gender": "female", "verb": "bol rahi hoon", "ability": "kar sakti hoon"},
+    "priya":  {"name": "Priya",  "gender": "female", "verb": "bol rahi hoon", "ability": "kar sakti hoon"},
+    "neha":   {"name": "Neha",   "gender": "female", "verb": "bol rahi hoon", "ability": "kar sakti hoon"},
+    "shreya": {"name": "Shreya", "gender": "female", "verb": "bol rahi hoon", "ability": "kar sakti hoon"},
+    "stella": {"name": "Stella", "gender": "female", "verb": "speaking",     "ability": "can help"},
 
     # Sarvam / ElevenLabs Male Voices
-    "rahul": {"name": "Rahul", "gender": "male",   "verb": "bol raha hoon", "ability": "kar sakta hoon"},
-    "rohan": {"name": "Rohan", "gender": "male",   "verb": "bol raha hoon", "ability": "kar sakta hoon"},
-    "dev":   {"name": "Dev",   "gender": "male",   "verb": "bol raha hoon", "ability": "kar sakta hoon"},
-    "shubh": {"name": "Shubh", "gender": "male",   "verb": "bol raha hoon", "ability": "kar sakta hoon"},
+    "rahul":  {"name": "Rahul",  "gender": "male",   "verb": "bol raha hoon", "ability": "kar sakta hoon"},
+    "rohan":  {"name": "Rohan",  "gender": "male",   "verb": "bol raha hoon", "ability": "kar sakta hoon"},
+    "dev":    {"name": "Dev",    "gender": "male",   "verb": "bol raha hoon", "ability": "kar sakta hoon"},
+    "shubh":  {"name": "Shubh",  "gender": "male",   "verb": "bol raha hoon", "ability": "kar sakta hoon"},
+    "amit":   {"name": "Amit",   "gender": "male",   "verb": "bol raha hoon", "ability": "kar sakta hoon"},
 }
 
 def get_persona_for_voice(tts_voice: str):
@@ -332,8 +337,14 @@ def get_persona_for_voice(tts_voice: str):
 class OutboundAssistant(Agent):
 
     def __init__(self, agent_tools: AgentTools, first_line: str = "", live_config: dict | None = None, is_outbound: bool = False):
-        from typing import cast, Any
-        tools: Any = llm.find_function_tools(agent_tools)
+        all_tools: Any = llm.find_function_tools(agent_tools)
+        # Exclude calendar, availability, and booking intent tools as requested
+        tools = [
+            t for t in all_tools
+            if getattr(t, "name", getattr(t, "__name__", "")) not in (
+                "book_appointment", "check_availability", "save_booking_intent"
+            )
+        ]
         self._first_line   = first_line
         self._live_config  = live_config or {}
         self._is_outbound  = is_outbound
@@ -359,8 +370,41 @@ class OutboundAssistant(Agent):
         p_gender  = persona["gender"]
 
         # Adapt instructions for persona name & gender grammar
-        adapted_base     = base_instructions.replace("Rahul", p_name).replace("bol raha hoon", p_verb)
-        persona_context  = f"\n\n[DYNAMIC PERSONA: Your name is {p_name}. You are a {p_gender} employee at Kona Kona Interiors. Always use {p_gender} grammar ('{p_verb}', '{persona['ability']}').]"
+        adapted_base = base_instructions
+        for old_name in ["Rahul", "Shreya", "Kavya", "Ritu", "Priya", "Neha", "Rohan", "Dev", "Shubh", "Amit", "Aryan"]:
+            if old_name != p_name:
+                adapted_base = adapted_base.replace(old_name, p_name)
+        if p_gender == "female":
+            adapted_base = (
+                adapted_base
+                .replace("bol raha hoon", "bol rahi hoon")
+                .replace("kar sakta hoon", "kar sakti hoon")
+                .replace("kar sakta", "kar sakti")
+                .replace("karunga", "karungi")
+                .replace("karta hoon", "karti hoon")
+                .replace("karta", "karti")
+                .replace("dunga", "dungi")
+            )
+        else:
+            adapted_base = (
+                adapted_base
+                .replace("bol rahi hoon", "bol raha hoon")
+                .replace("kar sakti hoon", "kar sakta hoon")
+                .replace("kar sakti", "kar sakta")
+                .replace("karungi", "karunga")
+                .replace("karti hoon", "karta hoon")
+                .replace("karti", "karta")
+                .replace("dungi", "dunga")
+            )
+        raw_first_line = (live_config_loaded.get("first_line") or "Hello").strip()
+        direction_ctx    = (
+            "\n[CALL DIRECTION: Speak naturally as an employee handling the call."
+            f" The Voice Platform opened with ONLY a simple '{raw_first_line}' — your name and company were NOT yet mentioned."
+            " When the other person first replies (e.g. says hello, haan, ha, etc.), THEN introduce yourself:"
+            " state your name and company naturally, then explain the purpose of the call."
+            " Never ask 'aap kaun hain'. Speak naturally as the employee.]"
+        )
+        persona_context  = f"\n\n[DYNAMIC PERSONA: Your name is {p_name}. You are a {p_gender} employee at Kona Kona Interiors. Always use {p_gender} grammar ('{p_verb}', '{persona['ability']}').]{direction_ctx}"
 
         # ── Knowledge Base injection (#KB) ────────────────────────────────────
         try:
@@ -387,16 +431,20 @@ class OutboundAssistant(Agent):
 
 
 def format_number_for_voicelink(phone: str) -> str:
-    """Format phone number for VoiceLink SIP Outbound gateway (expects 10-digit national number)."""
+    """Format phone number for VoiceLink SIP Outbound gateway (expects E.164 format with +91)."""
     digits = "".join(c for c in phone if c.isdigit())
-    if digits.startswith("91") and len(digits) == 12:
-        digits = digits[2:]
+    if len(digits) == 10:
+        return "+91" + digits
+    elif digits.startswith("91") and len(digits) == 12:
+        return "+" + digits
     elif digits.startswith("0") and len(digits) == 11:
-        digits = digits[1:]
-    return digits
+        return "+91" + digits[1:]
+    return "+" + digits if not phone.startswith("+") else phone
 
 
 agent_is_speaking = False
+_last_speech_end_time: float = 0.0   # timestamp when agent last finished speaking
+_ECHO_SUPPRESS_S: float = 1.5         # suppress STT input this many seconds after agent stops speaking
 
 async def entrypoint(ctx: JobContext):
     global agent_is_speaking
@@ -412,18 +460,63 @@ async def entrypoint(ctx: JobContext):
 
     # Try metadata first (outbound dispatch vs demo call)
     is_outbound = False
+    is_demo = False
+    phone = None
     metadata = ctx.job.metadata or ""
     if metadata:
         try:
             meta = json.loads(metadata)
-            is_demo = meta.get("is_demo", False)
-            phone = meta.get("phone_number")
-            if phone and phone.startswith("+") and not is_demo:
+            if isinstance(meta, str):
+                phone = meta
+                is_demo = meta.lower() == "demo"
+            elif isinstance(meta, dict):
+                is_demo = meta.get("is_demo", False)
+                phone = meta.get("phone_number") or meta.get("phone")
+            if phone and not is_demo and str(phone).lower() != "demo":
                 is_outbound = True
-                phone_number = phone
+                norm = normalize_indian_number(str(phone))
+                phone_number = norm["full_e164"]
                 logger.info(f"[OUTBOUND] Target phone number from metadata: {phone_number}")
         except Exception as e:
             logger.warning(f"[METADATA] Failed to parse job metadata: {e}")
+
+    # Fallback: Infer outbound target from room name (e.g. call-919766573966-5401)
+    if not is_outbound and ctx.room is not None and ctx.room.name:
+        import re as _re
+        rname = ctx.room.name
+        if "call-" in rname or "outbound-" in rname or "call_" in rname:
+            m = _re.search(r"(?:call|outbound)[-_](\d{10,15})[-_]?", rname)
+            if m:
+                raw_num = m.group(1)
+                norm = normalize_indian_number(raw_num)
+                phone_number = norm["full_e164"]
+                is_outbound = True
+                logger.info(f"[OUTBOUND] Target phone number inferred from room name '{rname}': {phone_number}")
+
+    # ── DEMO OVERRIDE: Web demo calls (demo-XXXXX or is_demo=True) run as OUTBOUND flow ──
+    room_name_str = ctx.room.name if (ctx.room is not None and ctx.room.name) else ""
+    is_demo_call = (
+        is_demo
+        or (isinstance(phone, str) and phone.lower() == "demo")
+        or ("demo-" in room_name_str or "demo_" in room_name_str)
+    )
+    if is_demo_call:
+        is_outbound = True
+        phone_number = None   # do not attempt SIP dial for web demo
+        logger.info(f"[DEMO] Web demo call detected ({room_name_str or 'unknown'}) — forcing OUTBOUND flow")
+
+    # ── INBOUND SAFEGUARD: rooms created by the SIP dispatch rule always have "inbound_" prefix ──
+    # This overrides any false-positive outbound detection (e.g. if LiveKit injects caller
+    # phone in job metadata, which looks like a phone number to the parser above).
+    if room_name_str.startswith("inbound_"):
+        if is_outbound:
+            logger.warning(
+                f"[INBOUND] Room '{room_name_str}' starts with 'inbound_' but metadata suggested "
+                f"outbound (phone={phone_number}). Overriding to INBOUND — will NOT dial out."
+            )
+            phone_number = None   # discard any spurious phone extracted from metadata
+        is_outbound = False
+        logger.info(f"[INBOUND] Room prefix confirms inbound call: {room_name_str}")
 
     # Extract from SIP participants
     for identity, participant in ctx.room.remote_participants.items():
@@ -445,52 +538,94 @@ async def entrypoint(ctx: JobContext):
     # ── Load config ───────────────────────────────────────────────────────
     live_config   = get_live_config(caller_phone)
 
-    # ── Outbound SIP Dialing ──────────────────────────────────────────────
+    # ── Outbound SIP / VoiceLink Dialing ──────────────────────────────────
     if is_outbound and phone_number:
-        trunk_id = (
-            live_config.get("sip_trunk_id")
-            or live_config.get("outbound_trunk_id")
-            or os.getenv("SIP_TRUNK_ID")
-            or os.getenv("OUTBOUND_TRUNK_ID")
-            or os.getenv("VOBIZ_SIP_TRUNK_ID")
-            or "ST_UFXhWiBxXpbg"
-        )
-        if trunk_id:
-            # VoiceLink Outbound gateway expects 10-digit national number (e.g. 9766573966)
-            digits = "".join(c for c in phone_number if c.isdigit())
-            if digits.startswith("91") and len(digits) == 12:
-                digits = digits[2:]
-            elif digits.startswith("0") and len(digits) == 11:
-                digits = digits[1:]
-            dial_target = digits  # 10 digits, e.g. 9766573966
+        norm = normalize_indian_number(phone_number)
+        national_10 = norm["national_10"]
+        full_e164   = norm["full_e164"]
 
-            # Our outbound caller DID (919429391395)
-            raw_caller = (
-                live_config.get("vobiz_outbound_number")
-                or os.getenv("VOBIZ_OUTBOUND_NUMBER")
+        voicelink_mode = (
+            live_config.get("voicelink_mode")
+            or os.getenv("VOICELINK_MODE", "sip").lower()
+        )
+
+        # Mode 1: VoiceLink REST API Add Lead (/v1/add_lead)
+        if voicelink_mode == "api":
+            raw_did = (
+                live_config.get("voicelink_outbound_number")
+                or os.getenv("VOICELINK_OUTBOUND_NUMBER")
+                or os.getenv("VOICELINK_DID_NUMBER")
                 or "919429391395"
             )
-            caller_id = "".join(c for c in raw_caller if c.isdigit())
-            if not caller_id.startswith("91") and len(caller_id) == 10:
-                caller_id = "91" + caller_id
-
-            logger.info(f"[OUTBOUND] Dialing recipient {dial_target} from caller DID {caller_id} via SIP Trunk ({trunk_id})...")
+            logger.info(f"[OUTBOUND-API] Originating VoiceLink call to {national_10} via DID {raw_did}...")
             try:
-                from livekit.api import CreateSIPParticipantRequest as _SipReq
-                sip_req = _SipReq(
-                    sip_trunk_id=trunk_id,
-                    sip_call_to=dial_target,   # Recipient 10-digit number to call (9766573966)
-                    sip_number=caller_id,       # Our outbound DID caller ID (919429391395)
-                    room_name=ctx.room.name,
-                    participant_identity=f"sip_{dial_target}",
-                    participant_name="Recipient",
+                client = VoiceLinkClient()
+                res = client.originate_call(
+                    did_number=raw_did,
+                    phone_number=national_10,
+                    custom_parameters=json.dumps({"room": ctx.room.name}),
                 )
-                await ctx.api.sip.create_sip_participant(sip_req)
-                logger.info(f"[OUTBOUND] SIP call successfully initiated to {dial_target} from DID {caller_id}")
+                logger.info(f"[OUTBOUND-API] VoiceLink call originated successfully: {res}")
             except Exception as e:
-                logger.error(f"[OUTBOUND] Failed to create SIP participant for {dial_target}: {e}")
+                logger.error(f"[OUTBOUND-API] Failed to originate VoiceLink API call: {e}")
+
+        # Mode 2: LiveKit SIP Trunking (Default)
         else:
-            logger.error("[OUTBOUND] Cannot dial: sip_trunk_id missing in DB and env")
+            trunk_id = (
+                live_config.get("sip_trunk_id")
+                or live_config.get("outbound_trunk_id")
+                or os.getenv("SIP_TRUNK_ID")
+                or os.getenv("OUTBOUND_TRUNK_ID")
+                or os.getenv("VOICELINK_SIP_TRUNK_ID")
+                or "ST_UFXhWiBxXpbg"
+            )
+            if trunk_id:
+                tech_prefix = (
+                    live_config.get("voicelink_tech_prefix")
+                    or os.getenv("VOICELINK_TECH_PREFIX")
+                    or "45454"
+                )
+                include_cc = os.getenv("VOICELINK_INCLUDE_COUNTRY_PREFIX", "false").lower() == "true"
+                
+                # VoiceLink carrier expects 10-digit national number after tech prefix (e.g. 454549766573966)
+                if tech_prefix:
+                    num_for_dial = f"91{national_10}" if include_cc else national_10
+                    dial_target = tech_prefix + num_for_dial if not num_for_dial.startswith(tech_prefix) else num_for_dial
+                else:
+                    dial_target = full_e164
+
+                # Outbound caller DID
+                raw_caller = (
+                    live_config.get("voicelink_outbound_number")
+                    or os.getenv("VOICELINK_OUTBOUND_NUMBER")
+                    or "919429391395"
+                )
+                caller_norm = normalize_indian_number(raw_caller)
+                caller_id = f"91{caller_norm['national_10']}"
+
+                logger.info(f"[OUTBOUND-SIP] Dialing target {dial_target} (national: {national_10}) from DID {caller_id} via SIP Trunk ({trunk_id})...")
+                try:
+                    from livekit.api import CreateSIPParticipantRequest as _SipReq
+                    sip_domain = os.getenv("VOICELINK_SIP_DOMAIN", "160.30.71.89:3300")
+                    sip_headers = {
+                        "P-Asserted-Identity": f"<sip:{caller_id}@{sip_domain}>",
+                        "Remote-Party-ID": f"<sip:{caller_id}@{sip_domain}>;party=calling;privacy=off",
+                    }
+                    sip_req = _SipReq(
+                        sip_trunk_id=trunk_id,
+                        sip_call_to=dial_target,   # Target recipient number with Tech Prefix
+                        sip_number=caller_id,       # Our outbound DID caller ID
+                        room_name=ctx.room.name,
+                        participant_identity=f"sip_{dial_target}",
+                        participant_name="Recipient",
+                        headers=sip_headers,
+                    )
+                    await ctx.api.sip.create_sip_participant(sip_req)
+                    logger.info(f"[OUTBOUND-SIP] SIP call successfully initiated from DID {caller_id} to {dial_target}")
+                except Exception as e:
+                    logger.error(f"[OUTBOUND-SIP] Failed to create SIP participant for {dial_target}: {e}")
+            else:
+                logger.error("[OUTBOUND] Cannot dial: sip_trunk_id missing in DB and env")
 
 
 
@@ -507,7 +642,10 @@ async def entrypoint(ctx: JobContext):
     _gemini_key = live_config.get("gemini_api_key") or live_config.get("google_api_key") or os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
 
     llm_provider = live_config.get("llm_provider") or os.environ.get("LLM_PROVIDER")
-    if not llm_provider or not _openai_key or "your_" in _openai_key or "xxxx" in _openai_key:
+    if llm_provider:
+        llm_provider = llm_provider.strip().lower()
+    
+    if not llm_provider:
         if _groq_key:
             llm_provider = "groq"
         elif _gemini_key:
@@ -571,28 +709,44 @@ async def entrypoint(ctx: JobContext):
     agent_tools.ctx_api   = ctx.api
     agent_tools.room_name = ctx.room.name
 
-    # ── Build LLM (#8 Groq support) ───────────────────────────────────────
-    if llm_provider == "groq":
-        _groq_key = os.environ.get("GROQ_API_KEY", "")
+    # ── Build LLM (#8 Groq / Gemini / Claude support) ──────────────────────
+    logger.info(f"[DEBUG] llm_provider is: {llm_provider!r}")
+    if llm_provider in ("google", "gemini"):
+        _gemini_key = (
+            live_config.get("gemini_api_key")
+            or live_config.get("google_api_key")
+            or os.environ.get("GEMINI_API_KEY")
+            or os.environ.get("GOOGLE_API_KEY", "")
+        )
         agent_llm = openai.LLM(
-            model=llm_model or "llama-3.3-70b-versatile",
+            model=llm_model or "gemini-2.5-flash",
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            api_key=_gemini_key,
+            max_completion_tokens=120,
+        )
+        logger.info(f"[LLM] Using Gemini/Google: {llm_model or 'gemini-2.5-flash'}")
+    elif llm_provider == "groq":
+        _groq_key = live_config.get("groq_api_key") or os.environ.get("GROQ_API_KEY", "")
+        agent_llm = openai.LLM(
+            model=llm_model or "llama-3.1-8b-instant",
             base_url="https://api.groq.com/openai/v1",
             api_key=_groq_key,
             max_completion_tokens=120,
         )
-        logger.info(f"[LLM] Using Groq: {llm_model}")
+        logger.info(f"[LLM] Using Groq: {llm_model or 'llama-3.1-8b-instant'}")
     elif llm_provider == "claude":
         # Claude Haiku 3.5 via Anthropic API (#27)
-        _anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        _anthropic_key = live_config.get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
         agent_llm = openai.LLM(
             model=llm_model or "claude-haiku-3-5-latest",
             base_url="https://api.anthropic.com/v1/",
             api_key=_anthropic_key,
             max_completion_tokens=120,
         )
-        logger.info(f"[LLM] Using Claude via Anthropic: {llm_model}")
+        logger.info(f"[LLM] Using Claude via Anthropic: {llm_model or 'claude-haiku-3-5-latest'}")
     else:
-        agent_llm = openai.LLM(model=llm_model or "gpt-4o-mini", max_completion_tokens=120)  # cap tokens (#7)
+        _openai_key = live_config.get("openai_api_key") or os.environ.get("OPENAI_API_KEY", "")
+        agent_llm = openai.LLM(model=llm_model or "gpt-4o-mini", api_key=_openai_key, max_completion_tokens=120)
         logger.info(f"[LLM] Using OpenAI: {llm_model or 'gpt-4o-mini'}")
 
     # ── Build STT (#1 16kHz, #20 auto-detect, #9 Deepgram) ──────────────
@@ -647,8 +801,8 @@ async def entrypoint(ctx: JobContext):
             from livekit.plugins import deepgram
             agent_tts = deepgram.TTS(model="aura-stella-en")
             logger.info("[TTS] Using Deepgram Aura TTS (aura-stella-en)")
-        except ImportError:
-            logger.warning("[TTS] deepgram plugin not installed — falling back to Sarvam")
+        except Exception as e:
+            logger.warning(f"[TTS] Deepgram TTS init failed ({e}) — falling back to Sarvam")
             agent_tts = sarvam.TTS(
                 target_language_code=tts_language,
                 model="bulbul:v3",
@@ -656,13 +810,18 @@ async def entrypoint(ctx: JobContext):
                 speech_sample_rate=24000,
             )
     else:
-        agent_tts = sarvam.TTS(
-            target_language_code=tts_language,
-            model="bulbul:v3",
-            speaker=tts_voice,
-            speech_sample_rate=24000,          # force 24kHz (#2)
-        )
-        logger.info(f"[TTS] Using Sarvam Bulbul v3 — voice: {tts_voice} lang: {tts_language}")
+        try:
+            agent_tts = sarvam.TTS(
+                target_language_code=tts_language,
+                model="bulbul:v3",
+                speaker=tts_voice,
+                speech_sample_rate=24000,          # force 24kHz (#2)
+            )
+            logger.info(f"[TTS] Using Sarvam Bulbul v3 — voice: {tts_voice} lang: {tts_language}")
+        except Exception as e:
+            logger.warning(f"[TTS] Sarvam TTS init failed ({e}) — falling back to Deepgram")
+            from livekit.plugins import deepgram
+            agent_tts = deepgram.TTS(model="aura-stella-en")
 
     # ── Sentence chunker (keep responses short for voice) ─────────────────
     def before_tts_cb(agent_response: str) -> str:
@@ -708,59 +867,62 @@ async def entrypoint(ctx: JobContext):
 
     await session.start(room=ctx.room, agent=agent, room_input_options=room_input)
 
-    # ── Speak Initial Greeting (Outbound SIP vs Browser Demo) ───────────
+    # ── Speak Initial Greeting (Simple opener for all calls) ────────────
     persona_info = get_persona_for_voice(tts_voice)
     p_name = persona_info["name"]
     p_verb = persona_info["verb"]
 
-    raw_first_line = live_config.get("first_line") or agent._first_line
-    if raw_first_line:
-        greeting_text = raw_first_line.replace("Rahul", p_name).replace("bol raha hoon", p_verb)
-    else:
-        greeting_text = f"Hello ji... Main {p_name} {p_verb}, Kona Kona Interiors se. Ritesh Sir ne aapka number diya tha. Kya aapke paas 2 minute hain baat karne ke liye?"
+    # Simple opener for all calls — the LLM introduces itself on the NEXT turn after response.
+    greeting_text = (live_config.get("first_line") or "Hello").strip()
+
+    async def wait_for_participant_audio():
+        # Check if any remote participant already has an audio track.
+        # TrackPublication.kind is a TrackKind enum (KIND_AUDIO=1), NOT the string "audio".
+        # We compare by value, enum attribute, or case-insensitive string to be robust.
+        for p in ctx.room.remote_participants.values():
+            for pub in p.track_publications.values():
+                kind = getattr(pub, "kind", None)
+                is_audio = (
+                    kind == 1
+                    or (hasattr(kind, "value") and getattr(kind, "value", None) == 1)
+                    or "audio" in str(kind).lower()
+                )
+                if getattr(pub, "subscribed", False) or is_audio:
+                    logger.info(f"[CALL] Audio track already present for {p.identity} (kind={kind}) — proceeding immediately")
+                    return p
+
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
+
+        def on_track_subscribed(track, publication, participant):
+            if not fut.done():
+                logger.info(f"[CALL] Audio track subscribed from {participant.identity} — audio ready!")
+                fut.set_result(participant)
+
+        ctx.room.on("track_subscribed", on_track_subscribed)
+        try:
+            p = await asyncio.wait_for(fut, timeout=10.0)
+            return p
+        except asyncio.TimeoutError:
+            logger.info("[CALL] Timeout waiting for audio track — proceeding to speak greeting anyway")
+            return None
 
     if is_outbound:
         logger.info("[OUTBOUND] Waiting for recipient to ANSWER the phone call...")
-
-        async def wait_for_call_answer():
-            # Check if any remote participant already has a subscribed audio track
-            for p in ctx.room.remote_participants.values():
-                for pub in p.track_publications.values():
-                    if getattr(pub, "subscribed", False) and getattr(pub, "kind", "") == "audio":
-                        return p
-
-            loop = asyncio.get_running_loop()
-            fut = loop.create_future()
-
-            def on_track_subscribed(track, publication, participant):
-                if not fut.done() and getattr(track, "kind", "") == "audio":
-                    logger.info(f"[OUTBOUND] Audio track subscribed from {participant.identity} — phone answered!")
-                    fut.set_result(participant)
-
-            ctx.room.on("track_subscribed", on_track_subscribed)
-            try:
-                p = await asyncio.wait_for(fut, timeout=45.0)
-                return p
-            except asyncio.TimeoutError:
-                logger.warning("[OUTBOUND] Outbound phone call timed out (unanswered)")
-                return None
-
-        answered_p = await wait_for_call_answer()
-        if answered_p:
-            await asyncio.sleep(0.8)  # Brief pause for audio pipe stability
-            logger.info(f"[OUTBOUND] Callee answered! Speaking greeting instantly: {greeting_text}")
-            try:
-                await session.say(greeting_text, allow_interruptions=True)
-            except Exception:
-                await session.generate_reply(instructions=f"Say exactly this phrase: '{greeting_text}'")
+        await wait_for_participant_audio()
+        await asyncio.sleep(0.5)
     else:
-        # Browser Demo Call / Inbound Web Call — caller is already connected in browser
-        logger.info(f"[DEMO] Browser call connected. Speaking initial greeting instantly: {greeting_text}")
-        await asyncio.sleep(0.6)  # Brief pause for WebRTC audio track setup
-        try:
-            await session.say(greeting_text, allow_interruptions=True)
-        except Exception:
-            await session.generate_reply(instructions=f"Say exactly this phrase: '{greeting_text}'")
+        logger.info("[INBOUND/DEMO] Waiting for caller audio track to connect...")
+        await wait_for_participant_audio()
+        await asyncio.sleep(0.5)
+
+    logger.info(f"[CALL] Speaking initial greeting instantly: {greeting_text}")
+    try:
+        await session.say(greeting_text, allow_interruptions=True)
+        session.history.add_message(role="assistant", content=greeting_text)
+    except Exception as e:
+        logger.warning(f"[CALL] session.say failed ({e}), generating reply")
+        await session.generate_reply(instructions=f"Say exactly this phrase: '{greeting_text}'")
 
     # ── TTS pre-warm (#12) ────────────────────────────────────────────────
     try:
@@ -841,11 +1003,17 @@ async def entrypoint(ctx: JobContext):
     # ── Session event handlers ────────────────────────────────────────────
     @session.on("agent_state_changed")
     def _agent_state_changed(ev):
-        global agent_is_speaking
+        global agent_is_speaking, _last_speech_end_time
         # AgentState values: 'listening', 'thinking', 'speaking'
         state = getattr(ev, "state", None) or getattr(ev, "new_state", None)
         if state is not None:
+            was_speaking = agent_is_speaking
             agent_is_speaking = str(state) in ("speaking", "AgentState.SPEAKING")
+            # When agent STOPS speaking, record the timestamp so we can suppress
+            # PSTN/SIP echo that arrives 300-800ms after TTS finishes.
+            if was_speaking and not agent_is_speaking:
+                _last_speech_end_time = time.time()
+                logger.debug(f"[ECHO-GUARD] Agent stopped speaking — suppressing STT input for {_ECHO_SUPPRESS_S}s")
 
     # Interrupt logging (#30) — use agent_false_interruption as closest proxy
     @session.on("agent_false_interruption")
@@ -863,7 +1031,7 @@ async def entrypoint(ctx: JobContext):
     @session.on("user_input_transcribed")
     def on_user_speech_committed(ev):
         nonlocal turn_count
-        global agent_is_speaking
+        global agent_is_speaking, _last_speech_end_time
 
         # Support both old and new event field names
         transcript = (
@@ -873,8 +1041,14 @@ async def entrypoint(ctx: JobContext):
         ).strip()
         transcript_lower = transcript.lower().rstrip(".")
 
-        if agent_is_speaking:
-            logger.debug(f"[FILTER-ECHO] Dropped: '{transcript}'")
+        # Echo suppression: drop input if agent is currently speaking OR within
+        # the post-speech suppression window (catches PSTN echo arriving after TTS).
+        time_since_speech = time.time() - _last_speech_end_time
+        if agent_is_speaking or time_since_speech < _ECHO_SUPPRESS_S:
+            logger.debug(
+                f"[FILTER-ECHO] Dropped (speaking={agent_is_speaking}, "
+                f"{time_since_speech:.2f}s since speech): '{transcript}'"
+            )
             return
         if not transcript or len(transcript) < 3:
             return
@@ -895,6 +1069,18 @@ async def entrypoint(ctx: JobContext):
                     instructions="Politely wrap up: thank the caller, say they can call back anytime, and say a warm goodbye."
                 )
             asyncio.create_task(_wrap_up())
+
+    @ctx.room.on("participant_connected")
+    def on_participant_connected(participant):
+        identity = str(participant.identity or "")
+        logger.info(f"[ROOM] Participant connected: {identity}")
+        # For inbound calls, the SIP participant joins AFTER the agent connects.
+        # Auto-update the SIP identity so transfer/end_call tools can address them.
+        if agent_tools._sip_identity in ("inbound_caller", "") and (
+            "sip_" in identity.lower() or "+" in identity or identity.startswith("sip")
+        ):
+            agent_tools._sip_identity = identity
+            logger.info(f"[INBOUND] SIP identity auto-set from connecting participant: {identity}")
 
     @ctx.room.on("participant_disconnected")
     def on_participant_disconnected(participant):
@@ -1079,6 +1265,6 @@ async def entrypoint(ctx: JobContext):
 if __name__ == "__main__":
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
-        agent_name="outbound-caller",
         initialize_process_timeout=30.0,
+        port=0,
     ))

@@ -47,6 +47,8 @@ def get_supabase() -> Client | None:
         if not val:
             return True
         v = val.strip().lower()
+        if "key" in name.lower() and (v.startswith("eyj") or not v.startswith("sb_")):
+            return True
         return "your_" in v or name.lower() in v or v == "placeholder"
 
     if is_placeholder(url, "supabase_url"):
@@ -111,6 +113,10 @@ def save_config_to_db(data: dict) -> bool:
     # Never persist supabase_url / supabase_key into the DB itself
     # (they are needed to connect — chicken-and-egg problem)
     safe_data = {k: v for k, v in data.items() if k not in ("supabase_url", "supabase_key")}
+    existing = load_config_from_db() or {}
+    # Merge existing and new data
+    for k, v in safe_data.items():
+        existing[k] = v
 
     supabase = get_supabase()
     if not supabase:
@@ -119,7 +125,7 @@ def save_config_to_db(data: dict) -> bool:
     for attempt in range(_MAX_RETRIES):
         try:
             supabase.table("agent_config").upsert(
-                {"id": "default", "data": safe_data},
+                {"id": "default", "data": existing},
                 on_conflict="id"
             ).execute()
             logger.info("Agent config saved to Supabase.")

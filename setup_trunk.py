@@ -13,10 +13,10 @@ async def main():
     sip = lkapi.sip
     
     trunk_id = os.getenv("OUTBOUND_TRUNK_ID")
-    address = os.getenv("VOBIZ_SIP_DOMAIN")
-    username = os.getenv("VOBIZ_USERNAME")
-    password = os.getenv("VOBIZ_PASSWORD")
-    number = os.getenv("VOBIZ_OUTBOUND_NUMBER")
+    address = os.getenv("VOICELINK_SIP_DOMAIN")
+    username = os.getenv("VOICELINK_USERNAME")
+    password = os.getenv("VOICELINK_PASSWORD")
+    number = os.getenv("VOICELINK_OUTBOUND_NUMBER")
     
     if not trunk_id:
         print("Error: OUTBOUND_TRUNK_ID not found in .env")

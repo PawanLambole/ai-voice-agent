@@ -5,20 +5,20 @@ import random
 import json
 from dotenv import load_dotenv
 from livekit import api
+from voicelink_client import normalize_indian_number
 
 # Load environment variables
 load_dotenv(".env")
 
 async def main():
     parser = argparse.ArgumentParser(description="Make an outbound call via LiveKit Agent.")
-    parser.add_argument("--to", required=True, help="The phone number to call (e.g., +91...)")
+    parser.add_argument("--to", required=True, help="The phone number to call (e.g., 9766573966 or +91...)")
     args = parser.parse_args()
 
-    # 1. Validation
-    phone_number = args.to.strip()
-    if not phone_number.startswith("+"):
-        print("Error: Phone number must start with '+' and country code.")
-        return
+    # 1. Validation & Normalization
+    raw_input = args.to.strip()
+    norm = normalize_indian_number(raw_input)
+    phone_number = norm["full_e164"]
 
     url = os.getenv("LIVEKIT_URL")
     api_key = os.getenv("LIVEKIT_API_KEY")
