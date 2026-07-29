@@ -1,20 +1,39 @@
-# Environment variables
+# Environment & Secret variables
 .env
 .env.local
+*.env
 
-# Python virtual environment
+# Python virtual environments & bytecode
 .venv/
 venv/
+ENV/
+env/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# IDE settings
+# Recordings & Audio files
+recordings/
+*.ogg
+*.wav
+*.mp3
+
+# Debug logs & transcripts
+*.log
+debug_transcript.txt
+*.txt.log
+
+# IDE & OS files
 .vscode/
 .idea/
+.DS_Store
+Thumbs.db
 
 # Temporary files & CLI caches
 rendered_dashboard.html
 scratch/
 test_script.js
 supabase/.temp/
-*.log
+.pytest_cache/
+.coverage
