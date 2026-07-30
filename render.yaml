@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: inbound-ai-voice
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: singapore
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: CAL_API_KEY
+        sync: false
+      - key: CAL_EVENT_TYPE_ID
+        sync: false
+      - key: SIP_TRUNK_ID
+        sync: false
+      - key: OUTBOUND_TRUNK_ID
+        sync: false
+      - key: VOICELINK_SIP_DOMAIN
+        sync: false
+      - key: VOICELINK_USERNAME
+        sync: false
+      - key: VOICELINK_PASSWORD
+        sync: false
+      - key: VOICELINK_OUTBOUND_NUMBER
+        sync: false

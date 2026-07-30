@@ -704,23 +704,27 @@ _agent_process = None
 def ensure_agent_worker_running():
     """Verify that an agent worker process is running before dispatching calls."""
     global _agent_process
+
+    # Honor explicit flag or Supervisor env to avoid duplicate background workers
+    if os.getenv("DISABLE_UI_WORKER_SPAWN", "false").lower() in ("true", "1", "yes") or os.getenv("SUPERVISOR_ENABLED") or os.getenv("SUPERVISORD"):
+        return True
+
     if _agent_process and _agent_process.poll() is None:
         return True
 
     # Check if any agent.py process is currently running on the system
     try:
         import psutil
-        for proc in psutil.process_iter(['pid', 'name']):
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
-                pname = (proc.info.get('name') or '').lower()
-                if 'python' in pname:
-                    cmd = proc.cmdline()
-                    if any("agent.py" in c for c in cmd):
-                        return True
+                cmd = proc.info.get('cmdline') or proc.cmdline()
+                if cmd and any("agent.py" in str(c) for c in cmd):
+                    return True
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
     except Exception:
         pass
+
 
     # If worker is not running, auto-start it!
     logger.info("[WORKER] Worker process not running — auto-starting background LiveKit agent worker...")
