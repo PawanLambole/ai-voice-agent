@@ -815,7 +815,6 @@ async def entrypoint(ctx: JobContext):
                 target_language_code=tts_language,
                 model="bulbul:v3",
                 speaker=tts_voice,
-                speech_sample_rate=24000,          # force 24kHz (#2)
             )
             logger.info(f"[TTS] Using Sarvam Bulbul v3 — voice: {tts_voice} lang: {tts_language}")
         except Exception as e:
@@ -915,13 +914,17 @@ async def entrypoint(ctx: JobContext):
         await wait_for_participant_audio()
         await asyncio.sleep(0.2)
 
-    logger.info(f"[CALL] Speaking initial greeting instantly: {greeting_text}")
+    logger.info(f"[CALL] Triggering initial greeting via generate_reply: '{greeting_text}'")
     try:
-        await session.say(greeting_text, allow_interruptions=True)
-        session.history.add_message(role="assistant", content=greeting_text)
+        await session.generate_reply(
+            instructions=f"Say exactly this opening greeting naturally: '{greeting_text}'"
+        )
     except Exception as e:
-        logger.warning(f"[CALL] session.say failed ({e}), generating reply")
-        await session.generate_reply(instructions=f"Say exactly this phrase: '{greeting_text}'")
+        logger.warning(f"[CALL] generate_reply failed ({e}), trying session.say")
+        try:
+            await session.say(greeting_text, allow_interruptions=True)
+        except Exception as say_err:
+            logger.error(f"[CALL] session.say also failed: {say_err}")
 
     # ── TTS pre-warm (#12) ────────────────────────────────────────────────
     try:
