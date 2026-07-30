@@ -1236,26 +1236,39 @@ async def entrypoint(ctx: JobContext):
             except Exception as e:
                 logger.warning(f"[N8N] Webhook failed: {e}")
 
-        # Save to Supabase
-        from db import save_call_log
-        save_call_log(
-            phone=caller_phone,
-            duration=duration,
-            transcript=transcript_text,
-            summary=booking_status_msg,
-            recording_url=recording_url,
-            caller_name=agent_tools.caller_name or "",
-            sentiment=sentiment,
-            estimated_cost_usd=estimated_cost,
-            call_date=call_dt.date().isoformat(),
-            call_hour=call_dt.hour,
-            call_day_of_week=call_dt.strftime("%A"),
-            was_booked=bool(agent_tools.booking_intent),
-            interrupt_count=interrupt_count,
-        )
+        # Save to Supabase (run in executor to prevent GIL/event loop blocking)
+        try:
+            from db import save_call_log
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: save_call_log(
+                    phone=caller_phone,
+                    duration=duration,
+                    transcript=transcript_text,
+                    summary=booking_status_msg,
+                    recording_url=recording_url,
+                    caller_name=agent_tools.caller_name or "",
+                    sentiment=sentiment,
+                    estimated_cost_usd=estimated_cost,
+                    call_date=call_dt.date().isoformat(),
+                    call_hour=call_dt.hour,
+                    call_day_of_week=call_dt.strftime("%A"),
+                    was_booked=bool(agent_tools.booking_intent),
+                    interrupt_count=interrupt_count,
+                )
+            )
+            logger.info("[DB] Call log saved successfully.")
+        except Exception as e:
+            logger.warning(f"[DB] Save call log failed: {e}")
+
+        logger.info("[SHUTDOWN] Completed — worker ready for next call.")
 
     async def _shutdown_no_arg() -> None:
-        await unified_shutdown_hook(ctx)
+        try:
+            await asyncio.wait_for(unified_shutdown_hook(ctx), timeout=5.0)
+        except Exception as e:
+            logger.warning(f"[SHUTDOWN] Hook finished or timed out: {e}")
 
     ctx.add_shutdown_callback(_shutdown_no_arg)
 
