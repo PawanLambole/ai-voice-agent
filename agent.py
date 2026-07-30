@@ -40,6 +40,7 @@ if _sentry_dsn:
 logging.getLogger("hpack").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 
 load_dotenv()
 logger = logging.getLogger("outbound-agent")
@@ -64,7 +65,7 @@ CONFIG_FILE = "config.json"
 
 # ── Rate limiting (#37) ───────────────────────────────────────────────────────
 _call_timestamps: dict = defaultdict(list)
-RATE_LIMIT_CALLS  = 5
+RATE_LIMIT_CALLS  = 50
 RATE_LIMIT_WINDOW = 3600  # 1 hour
 
 def is_rate_limited(phone: str) -> bool:
@@ -914,17 +915,15 @@ async def entrypoint(ctx: JobContext):
         await wait_for_participant_audio()
         await asyncio.sleep(0.2)
 
-    logger.info(f"[CALL] Triggering initial greeting via generate_reply: '{greeting_text}'")
+    logger.info(f"[CALL] Speaking initial greeting: '{greeting_text}'")
     try:
-        await session.generate_reply(
-            instructions=f"Say exactly this opening greeting naturally: '{greeting_text}'"
-        )
-    except Exception as e:
-        logger.warning(f"[CALL] generate_reply failed ({e}), trying session.say")
+        await session.say(greeting_text, allow_interruptions=True)
         try:
-            await session.say(greeting_text, allow_interruptions=True)
-        except Exception as say_err:
-            logger.error(f"[CALL] session.say also failed: {say_err}")
+            session.history.add_message(role="assistant", content=greeting_text)
+        except Exception:
+            pass
+    except Exception as e:
+        logger.warning(f"[CALL] session.say failed ({e})")
 
     # ── TTS pre-warm (#12) ────────────────────────────────────────────────
     try:
@@ -1095,7 +1094,13 @@ async def entrypoint(ctx: JobContext):
     # POST-CALL SHUTDOWN HOOK
     # ══════════════════════════════════════════════════════════════════════
 
+    _shutdown_ran = False
+
     async def unified_shutdown_hook(shutdown_ctx: JobContext):
+        nonlocal _shutdown_ran
+        if _shutdown_ran:
+            return
+        _shutdown_ran = True
         logger.info("[SHUTDOWN] Sequence started.")
 
         duration = int((datetime.now() - call_start_time).total_seconds())
@@ -1280,6 +1285,7 @@ async def entrypoint(ctx: JobContext):
 if __name__ == "__main__":
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
+        agent_name="outbound-caller",
         initialize_process_timeout=30.0,
         port=0,
     ))
