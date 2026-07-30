@@ -841,13 +841,14 @@ async def entrypoint(ctx: JobContext):
     )
 
     # ── Build session (#3 noise cancellation attempted) ───────────────────
-    try:
-        from livekit.agents import noise_cancellation as nc
-        _noise_cancel = nc.BVC()
-        logger.info("[AUDIO] BVC noise cancellation enabled")
-    except Exception:
-        _noise_cancel = None
-        logger.info("[AUDIO] BVC not available — running without noise cancellation")
+    _noise_cancel = None
+    if os.getenv("ENABLE_NOISE_CANCELLATION", "false").lower() == "true":
+        try:
+            from livekit.agents import noise_cancellation as nc
+            _noise_cancel = nc.BVC()
+            logger.info("[AUDIO] BVC noise cancellation enabled")
+        except Exception as e:
+            logger.info(f"[AUDIO] Noise cancellation unavailable: {e}")
 
     room_input = RoomInputOptions(close_on_disconnect=False)
     if _noise_cancel:
@@ -876,9 +877,7 @@ async def entrypoint(ctx: JobContext):
     greeting_text = (live_config.get("first_line") or "Hello").strip()
 
     async def wait_for_participant_audio():
-        # Check if any remote participant already has an audio track.
-        # TrackPublication.kind is a TrackKind enum (KIND_AUDIO=1), NOT the string "audio".
-        # We compare by value, enum attribute, or case-insensitive string to be robust.
+        # Check if any remote participant already exists or has an audio track
         for p in ctx.room.remote_participants.values():
             for pub in p.track_publications.values():
                 kind = getattr(pub, "kind", None)
@@ -901,20 +900,20 @@ async def entrypoint(ctx: JobContext):
 
         ctx.room.on("track_subscribed", on_track_subscribed)
         try:
-            p = await asyncio.wait_for(fut, timeout=10.0)
+            p = await asyncio.wait_for(fut, timeout=2.5)
             return p
         except asyncio.TimeoutError:
-            logger.info("[CALL] Timeout waiting for audio track — proceeding to speak greeting anyway")
+            logger.info("[CALL] Ready to speak greeting — proceeding without delay")
             return None
 
     if is_outbound:
         logger.info("[OUTBOUND] Waiting for recipient to ANSWER the phone call...")
         await wait_for_participant_audio()
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.2)
     else:
         logger.info("[INBOUND/DEMO] Waiting for caller audio track to connect...")
         await wait_for_participant_audio()
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.2)
 
     logger.info(f"[CALL] Speaking initial greeting instantly: {greeting_text}")
     try:
