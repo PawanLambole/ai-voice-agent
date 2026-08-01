@@ -110,13 +110,12 @@ def save_config_to_db(data: dict) -> bool:
     Upsert the full agent configuration dict into `agent_config`.
     Returns True on success, False on failure.
     """
-    # Never persist supabase_url / supabase_key into the DB itself
-    # (they are needed to connect — chicken-and-egg problem)
     safe_data = {k: v for k, v in data.items() if k not in ("supabase_url", "supabase_key")}
     existing = load_config_from_db() or {}
-    # Merge existing and new data
+    # Merge existing and new data (don't overwrite non-empty values with empty strings)
     for k, v in safe_data.items():
-        existing[k] = v
+        if v not in ("", None) or k not in existing:
+            existing[k] = v
 
     supabase = get_supabase()
     if not supabase:

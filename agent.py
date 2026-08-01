@@ -228,7 +228,7 @@ class AgentTools(llm.ToolContext):
             return "Unable to transfer right now."
 
     # ── Tool: End Call ────────────────────────────────────────────────────
-    @llm.function_tool(description="End the call. Use ONLY when caller says bye/goodbye or after booking is fully confirmed.")
+    @llm.function_tool(description="MANDATORY: Call this tool to physically disconnect and hang up the phone call. You MUST call this after saying any goodbye, thank you, or wrap-up message. Triggers on: caller says bye/goodbye/band karo/rakhta hoon, conversation is complete, caller is busy and will call back, worker refuses training and call is done, or any natural end of conversation.")
     async def end_call(self, reason: Annotated[str, "Reason for ending call"] = "") -> str:
         logger.info(f"[TOOL] end_call triggered — hanging up (reason: {reason}).")
         try:
@@ -416,7 +416,20 @@ class OutboundAssistant(Agent):
             kb_block = ""
             logger.warning(f"[KB] Could not load knowledge base: {_kb_err}")
 
-        final_instructions = adapted_base + persona_context + kb_block + ist_context + lang_instruction
+        tool_rules = (
+            "\n\n[CRITICAL TOOL RULES — YOU MUST FOLLOW THESE EXACTLY]\n"
+            "1. ALWAYS call end_call() tool at the end of EVERY conversation — just saying goodbye verbally is NOT enough to hang up. The tool call physically disconnects the phone.\n"
+            "2. Call end_call() after: saying thank you/goodbye, caller says bye/band karo/rakhna/goodbye, worker is busy and you say you'll call back, or any natural conversation ending.\n"
+            "3. Never leave the call hanging — always end with end_call() tool after your final spoken sentence."
+        )
+        format_rule = (
+            "\n\n[CRITICAL AUDIO FORMATTING RULE]\n"
+            "You are speaking aloud over a phone call via TTS.\n"
+            "1. NEVER use markdown formatting like **, *, #, -, or bullet points.\n"
+            "2. NEVER use emojis, list numbers, or line breaks in your answers.\n"
+            "3. Write only plain conversational spoken words in clean sentences."
+        )
+        final_instructions = adapted_base + persona_context + kb_block + ist_context + lang_instruction + tool_rules + format_rule
 
         # Token counter (#11)
         token_count = count_tokens(final_instructions)
@@ -635,7 +648,7 @@ async def entrypoint(ctx: JobContext):
         logger.warning(f"[RATE-LIMIT] Blocked {caller_phone} — too many calls in 1h")
         return
 
-    delay_setting = live_config.get("stt_min_endpointing_delay", 0.35)
+    delay_setting = live_config.get("stt_min_endpointing_delay", 0.8)
     
     # Provider detection: explicit in live_config > GROQ_API_KEY present in env/config > default openai
     _openai_key = live_config.get("openai_api_key") or os.environ.get("OPENAI_API_KEY", "")
@@ -710,7 +723,7 @@ async def entrypoint(ctx: JobContext):
     agent_tools.ctx_api   = ctx.api
     agent_tools.room_name = ctx.room.name
 
-    # ── Build LLM (#8 Groq / Gemini / Claude support) ──────────────────────
+    # ── Build LLM (Groq / Gemini / Claude / Cerebras / Mistral / Together / Sambanova / OpenRouter) ──
     logger.info(f"[DEBUG] llm_provider is: {llm_provider!r}")
     if llm_provider in ("google", "gemini"):
         _gemini_key = (
@@ -719,13 +732,16 @@ async def entrypoint(ctx: JobContext):
             or os.environ.get("GEMINI_API_KEY")
             or os.environ.get("GOOGLE_API_KEY", "")
         )
+        _target_model = llm_model or "gemini-2.0-flash"
+        if "2.5" in _target_model:
+            _target_model = "gemini-2.0-flash"
         agent_llm = openai.LLM(
-            model=llm_model or "gemini-2.5-flash",
+            model=_target_model,
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
             api_key=_gemini_key,
             max_completion_tokens=120,
         )
-        logger.info(f"[LLM] Using Gemini/Google: {llm_model or 'gemini-2.5-flash'}")
+        logger.info(f"[LLM] Using Gemini/Google: {_target_model}")
     elif llm_provider == "groq":
         _groq_key = live_config.get("groq_api_key") or os.environ.get("GROQ_API_KEY", "")
         agent_llm = openai.LLM(
@@ -735,8 +751,53 @@ async def entrypoint(ctx: JobContext):
             max_completion_tokens=120,
         )
         logger.info(f"[LLM] Using Groq: {llm_model or 'llama-3.1-8b-instant'}")
+    elif llm_provider == "cerebras":
+        _cerebras_key = live_config.get("cerebras_api_key") or os.environ.get("CEREBRAS_API_KEY", "")
+        agent_llm = openai.LLM(
+            model=llm_model or "llama-3.1-8b",
+            base_url="https://api.cerebras.ai/v1",
+            api_key=_cerebras_key,
+            max_completion_tokens=120,
+        )
+        logger.info(f"[LLM] Using Cerebras: {llm_model or 'llama-3.1-8b'}")
+    elif llm_provider == "mistral":
+        _mistral_key = live_config.get("mistral_api_key") or os.environ.get("MISTRAL_API_KEY", "")
+        agent_llm = openai.LLM(
+            model=llm_model or "mistral-small-latest",
+            base_url="https://api.mistral.ai/v1",
+            api_key=_mistral_key,
+            temperature=0.3,
+            max_completion_tokens=100,
+        )
+        logger.info(f"[LLM] Using Mistral: {llm_model or 'mistral-small-latest'}")
+    elif llm_provider == "together":
+        _together_key = live_config.get("together_api_key") or os.environ.get("TOGETHER_API_KEY", "")
+        agent_llm = openai.LLM(
+            model=llm_model or "meta-llama/Llama-3.1-8B-Instruct-Turbo",
+            base_url="https://api.together.xyz/v1",
+            api_key=_together_key,
+            max_completion_tokens=120,
+        )
+        logger.info(f"[LLM] Using Together AI: {llm_model or 'meta-llama/Llama-3.1-8B-Instruct-Turbo'}")
+    elif llm_provider == "sambanova":
+        _sambanova_key = live_config.get("sambanova_api_key") or os.environ.get("SAMBANOVA_API_KEY", "")
+        agent_llm = openai.LLM(
+            model=llm_model or "Meta-Llama-3.1-8B-Instruct",
+            base_url="https://api.sambanova.ai/v1",
+            api_key=_sambanova_key,
+            max_completion_tokens=120,
+        )
+        logger.info(f"[LLM] Using Sambanova: {llm_model or 'Meta-Llama-3.1-8B-Instruct'}")
+    elif llm_provider == "openrouter":
+        _openrouter_key = live_config.get("openrouter_api_key") or os.environ.get("OPENROUTER_API_KEY", "")
+        agent_llm = openai.LLM(
+            model=llm_model or "meta-llama/llama-3.1-8b-instruct:free",
+            base_url="https://openrouter.ai/api/v1",
+            api_key=_openrouter_key,
+            max_completion_tokens=120,
+        )
+        logger.info(f"[LLM] Using OpenRouter: {llm_model or 'meta-llama/llama-3.1-8b-instruct:free'}")
     elif llm_provider == "claude":
-        # Claude Haiku 3.5 via Anthropic API (#27)
         _anthropic_key = live_config.get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
         agent_llm = openai.LLM(
             model=llm_model or "claude-haiku-3-5-latest",
@@ -857,13 +918,24 @@ async def entrypoint(ctx: JobContext):
         except Exception:
             room_input = RoomInputOptions(close_on_disconnect=False)
 
+    # ── Anti-voice-breaking VAD & Interruption Control ─────────────────
+    agent_vad = silero.VAD.load(
+        min_speech_duration=0.2,       # 200ms speech required to trigger VAD
+        min_silence_duration=0.6,      # 600ms silence required to end turn
+        activation_threshold=0.55,     # Filters out line static, breath, and background noise
+    )
+
     session = AgentSession(
         stt=agent_stt,
         llm=agent_llm,
         tts=agent_tts,
+        vad=agent_vad,
         turn_detection="stt",
-        min_endpointing_delay=float(delay_setting),  # 0.05 default (#6)
+        min_endpointing_delay=max(float(delay_setting), 0.6),
         allow_interruptions=True,
+        min_interruption_duration=0.4,   # Require 0.4s continuous audio to interrupt
+        min_interruption_words=1,        # Require at least 1 recognized word before cutting off speech
+        resume_false_interruption=True,  # Smoothly resume speaking if noise caused false interruption
     )
 
     await session.start(room=ctx.room, agent=agent, room_input_options=room_input)

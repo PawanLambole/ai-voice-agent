@@ -118,17 +118,8 @@ def read_config(force_reload: bool = False) -> dict:
     except Exception as e:
         logger.debug(f"DB config load skipped: {e}")
 
-    # Layer 3 (highest): .env / os.environ — always overrides DB
-    # Map of config key → env variable name(s) to check
+    # Layer 3: Environment variables — only for secret API keys and system URLs
     _ENV_MAP = {
-        "first_line":               ("FIRST_LINE",),
-        "agent_instructions":       ("AGENT_INSTRUCTIONS",),
-        "llm_provider":             ("LLM_PROVIDER",),
-        "llm_model":                ("LLM_MODEL",),
-        "tts_voice":                ("TTS_VOICE",),
-        "tts_language":             ("TTS_LANGUAGE",),
-        "stt_min_endpointing_delay":("STT_MIN_ENDPOINTING_DELAY",),
-        "lang_preset":              ("LANG_PRESET",),
         "livekit_url":              ("LIVEKIT_URL",),
         "sip_trunk_id":             ("SIP_TRUNK_ID", "OUTBOUND_TRUNK_ID"),
         "livekit_api_key":          ("LIVEKIT_API_KEY",),
@@ -140,6 +131,11 @@ def read_config(force_reload: bool = False) -> dict:
         "deepgram_api_key":         ("DEEPGRAM_API_KEY",),
         "gemini_api_key":           ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
         "google_api_key":           ("GOOGLE_API_KEY", "GEMINI_API_KEY"),
+        "cerebras_api_key":         ("CEREBRAS_API_KEY",),
+        "mistral_api_key":          ("MISTRAL_API_KEY",),
+        "together_api_key":         ("TOGETHER_API_KEY",),
+        "sambanova_api_key":        ("SAMBANOVA_API_KEY",),
+        "openrouter_api_key":       ("OPENROUTER_API_KEY",),
         "cal_api_key":              ("CAL_API_KEY",),
         "cal_event_type_id":        ("CAL_EVENT_TYPE_ID",),
         "telegram_bot_token":       ("TELEGRAM_BOT_TOKEN",),
@@ -209,6 +205,8 @@ def write_config(data: dict):
         "groq_api_key", "openai_api_key", "anthropic_api_key",
         "gemini_api_key", "google_api_key",
         "sarvam_api_key", "deepgram_api_key",
+        "cerebras_api_key", "mistral_api_key", "together_api_key",
+        "sambanova_api_key", "openrouter_api_key",
         "cal_api_key", "cal_event_type_id",
         "telegram_bot_token", "telegram_chat_id",
         "voicelink_sip_domain", "voicelink_username", "voicelink_password", "voicelink_outbound_number",
@@ -232,11 +230,79 @@ def write_config(data: dict):
     # 2. Write FULL data (including secrets) to Supabase DB
     db_payload = {k: v for k, v in data.items() if k not in ("supabase_url", "supabase_key")}
     ensure_supabase_env_from(data)
+    update_env_file(data)
     try:
         import db
         db.save_config_to_db(db_payload)
     except Exception as e:
         logger.warning(f"Could not save config to DB: {e}")
+
+
+def update_env_file(key_value_map: dict, env_path: str = ".env"):
+    """Update or append API keys and configuration in the local .env file."""
+    try:
+        env_lines = []
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as f:
+                env_lines = f.readlines()
+
+        existing_keys = set()
+        new_lines = []
+
+        KEY_TO_ENV = {
+            "supabase_url": "SUPABASE_URL",
+            "supabase_key": "SUPABASE_KEY",
+            "livekit_url": "LIVEKIT_URL",
+            "livekit_api_key": "LIVEKIT_API_KEY",
+            "livekit_api_secret": "LIVEKIT_API_SECRET",
+            "groq_api_key": "GROQ_API_KEY",
+            "openai_api_key": "OPENAI_API_KEY",
+            "gemini_api_key": "GEMINI_API_KEY",
+            "google_api_key": "GOOGLE_API_KEY",
+            "sarvam_api_key": "SARVAM_API_KEY",
+            "deepgram_api_key": "DEEPGRAM_API_KEY",
+            "cerebras_api_key": "CEREBRAS_API_KEY",
+            "mistral_api_key": "MISTRAL_API_KEY",
+            "together_api_key": "TOGETHER_API_KEY",
+            "sambanova_api_key": "SAMBANOVA_API_KEY",
+            "openrouter_api_key": "OPENROUTER_API_KEY",
+            "telegram_bot_token": "TELEGRAM_BOT_TOKEN",
+            "telegram_chat_id": "TELEGRAM_CHAT_ID",
+            "voicelink_sip_domain": "VOICELINK_SIP_DOMAIN",
+            "voicelink_username": "VOICELINK_USERNAME",
+            "voicelink_password": "VOICELINK_PASSWORD",
+            "voicelink_outbound_number": "VOICELINK_OUTBOUND_NUMBER",
+        }
+
+        updates_to_make = {}
+        for k, v in key_value_map.items():
+            if k in KEY_TO_ENV and v and isinstance(v, str):
+                val_str = v.strip()
+                if val_str and not ("..." in val_str and "len=" in val_str):
+                    env_name = KEY_TO_ENV[k]
+                    updates_to_make[env_name] = val_str
+                    os.environ[env_name] = val_str
+
+        for line in env_lines:
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#") and "=" in stripped:
+                env_k, _ = stripped.split("=", 1)
+                env_k = env_k.strip()
+                if env_k in updates_to_make:
+                    new_lines.append(f'{env_k}="{updates_to_make[env_k]}"\n')
+                    existing_keys.add(env_k)
+                    continue
+            new_lines.append(line)
+
+        for env_k, env_v in updates_to_make.items():
+            if env_k not in existing_keys:
+                new_lines.append(f'{env_k}="{env_v}"\n')
+
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+
+    except Exception as e:
+        logger.warning(f"Could not update .env file: {e}")
 
 
 
@@ -251,6 +317,11 @@ def ensure_supabase_env_from(cfg: dict):
         ("google_api_key", "GOOGLE_API_KEY"),
         ("sarvam_api_key", "SARVAM_API_KEY"),
         ("deepgram_api_key", "DEEPGRAM_API_KEY"),
+        ("cerebras_api_key", "CEREBRAS_API_KEY"),
+        ("mistral_api_key", "MISTRAL_API_KEY"),
+        ("together_api_key", "TOGETHER_API_KEY"),
+        ("sambanova_api_key", "SAMBANOVA_API_KEY"),
+        ("openrouter_api_key", "OPENROUTER_API_KEY"),
         ("voicelink_sip_domain", "VOICELINK_SIP_DOMAIN"),
         ("voicelink_username", "VOICELINK_USERNAME"),
         ("voicelink_password", "VOICELINK_PASSWORD"),
@@ -706,7 +777,7 @@ def ensure_agent_worker_running():
     global _agent_process
 
     # Honor explicit flag or Supervisor env to avoid duplicate background workers
-    if os.getenv("DISABLE_UI_WORKER_SPAWN", "false").lower() in ("true", "1", "yes") or os.getenv("SUPERVISOR_ENABLED") or os.getenv("SUPERVISORD"):
+    if os.getenv("DISABLE_UI_WORKER_SPAWN", "true").lower() in ("true", "1", "yes") or os.getenv("SUPERVISOR_ENABLED") or os.getenv("SUPERVISORD"):
         return True
 
     if _agent_process and _agent_process.poll() is None:
@@ -835,9 +906,14 @@ async def get_dashboard():
     has_claude = bool(config.get("anthropic_api_key") or os.getenv("ANTHROPIC_API_KEY"))
     has_sarvam = bool(config.get("sarvam_api_key") or os.getenv("SARVAM_API_KEY"))
     has_deepgram = bool(config.get("deepgram_api_key") or os.getenv("DEEPGRAM_API_KEY"))
+    has_cerebras = bool(config.get("cerebras_api_key") or os.getenv("CEREBRAS_API_KEY"))
+    has_mistral = bool(config.get("mistral_api_key") or os.getenv("MISTRAL_API_KEY"))
+    has_together = bool(config.get("together_api_key") or os.getenv("TOGETHER_API_KEY"))
+    has_sambanova = bool(config.get("sambanova_api_key") or os.getenv("SAMBANOVA_API_KEY"))
+    has_openrouter = bool(config.get("openrouter_api_key") or os.getenv("OPENROUTER_API_KEY"))
 
     # Fallback if no keys set at all
-    if not (has_groq or has_gemini or has_openai or has_claude):
+    if not (has_groq or has_gemini or has_openai or has_claude or has_cerebras or has_mistral or has_together or has_sambanova or has_openrouter):
         has_groq = True
         has_openai = True
     if not (has_sarvam or has_deepgram or has_openai):
@@ -845,9 +921,19 @@ async def get_dashboard():
 
     provider_options = []
     if has_groq:
-        provider_options.append(f'<option value="groq" {sel("llm_provider","groq")}>Groq (Ultra-Fast &amp; High Quality)</option>')
+        provider_options.append(f'<option value="groq" {sel("llm_provider","groq")}>Groq (Ultra-Fast &amp; Free)</option>')
+    if has_cerebras:
+        provider_options.append(f'<option value="cerebras" {sel("llm_provider","cerebras")}>Cerebras (Fastest AI &amp; Free)</option>')
+    if has_mistral:
+        provider_options.append(f'<option value="mistral" {sel("llm_provider","mistral")}>Mistral AI (Free Tier)</option>')
+    if has_together:
+        provider_options.append(f'<option value="together" {sel("llm_provider","together")}>Together AI (Free Credits)</option>')
+    if has_sambanova:
+        provider_options.append(f'<option value="sambanova" {sel("llm_provider","sambanova")}>Sambanova (Free Tier)</option>')
+    if has_openrouter:
+        provider_options.append(f'<option value="openrouter" {sel("llm_provider","openrouter")}>OpenRouter (Many Free Models)</option>')
     if has_gemini:
-        provider_options.append(f'<option value="google" {sel("llm_provider","google")}>Google Gemini (Ultra-Fast &amp; High Intelligence)</option>')
+        provider_options.append(f'<option value="google" {sel("llm_provider","google")}>Google Gemini</option>')
     if has_openai:
         provider_options.append(f'<option value="openai" {sel("llm_provider","openai")}>OpenAI</option>')
     if has_claude:
@@ -857,16 +943,44 @@ async def get_dashboard():
 
     model_optgroups = []
     if has_groq:
-        model_optgroups.append(f'''<optgroup label="Groq Models (Recommended)">
-              <option value="llama-3.3-70b-versatile" {sel('llm_model','llama-3.3-70b-versatile')}>llama-3.3-70b-versatile (Recommended)</option>
-              <option value="llama-3.1-8b-instant" {sel('llm_model','llama-3.1-8b-instant')}>llama-3.1-8b-instant (Ultra-Fast)</option>
+        model_optgroups.append(f'''<optgroup label="Groq Models (Free — Recommended)">
+              <option value="llama-3.3-70b-versatile" {sel('llm_model','llama-3.3-70b-versatile')}>llama-3.3-70b-versatile — Best Quality</option>
+              <option value="llama-3.1-8b-instant" {sel('llm_model','llama-3.1-8b-instant')}>llama-3.1-8b-instant — Ultra-Fast</option>
               <option value="mixtral-8x7b-32768" {sel('llm_model','mixtral-8x7b-32768')}>mixtral-8x7b-32768</option>
               <option value="gemma2-9b-it" {sel('llm_model','gemma2-9b-it')}>gemma2-9b-it</option>
             </optgroup>''')
+    if has_cerebras:
+        model_optgroups.append(f'''<optgroup label="Cerebras Models (Free — Fastest)">
+              <option value="llama-3.1-8b" {sel('llm_model','llama-3.1-8b')}>llama-3.1-8b — Ultra-Fast (Recommended)</option>
+              <option value="llama-3.3-70b" {sel('llm_model','llama-3.3-70b')}>llama-3.3-70b — High Quality</option>
+            </optgroup>''')
+    if has_mistral:
+        model_optgroups.append(f'''<optgroup label="Mistral AI Models (Free Tier)">
+              <option value="mistral-small-latest" {sel('llm_model','mistral-small-latest')}>mistral-small-latest — Fast &amp; Free</option>
+              <option value="open-mistral-nemo" {sel('llm_model','open-mistral-nemo')}>open-mistral-nemo — Lightweight</option>
+              <option value="mistral-medium-latest" {sel('llm_model','mistral-medium-latest')}>mistral-medium-latest — Balanced</option>
+            </optgroup>''')
+    if has_together:
+        model_optgroups.append(f'''<optgroup label="Together AI Models (Free Credits)">
+              <option value="meta-llama/Llama-3.1-8B-Instruct-Turbo" {sel('llm_model','meta-llama/Llama-3.1-8B-Instruct-Turbo')}>Llama-3.1-8B-Turbo — Fast</option>
+              <option value="meta-llama/Llama-3.3-70B-Instruct-Turbo" {sel('llm_model','meta-llama/Llama-3.3-70B-Instruct-Turbo')}>Llama-3.3-70B-Turbo — High Quality</option>
+              <option value="mistralai/Mistral-7B-Instruct-v0.3" {sel('llm_model','mistralai/Mistral-7B-Instruct-v0.3')}>Mistral-7B-Instruct — Compact</option>
+            </optgroup>''')
+    if has_sambanova:
+        model_optgroups.append(f'''<optgroup label="Sambanova Models (Free)">
+              <option value="Meta-Llama-3.1-8B-Instruct" {sel('llm_model','Meta-Llama-3.1-8B-Instruct')}>Llama-3.1-8B — Fast &amp; Free</option>
+              <option value="Meta-Llama-3.3-70B-Instruct" {sel('llm_model','Meta-Llama-3.3-70B-Instruct')}>Llama-3.3-70B — High Quality</option>
+            </optgroup>''')
+    if has_openrouter:
+        model_optgroups.append(f'''<optgroup label="OpenRouter Models (Free Tier)">
+              <option value="google/gemma-3-27b-it:free" {sel('llm_model','google/gemma-3-27b-it:free')}>Gemma-3-27B — Free</option>
+              <option value="meta-llama/llama-3.1-8b-instruct:free" {sel('llm_model','meta-llama/llama-3.1-8b-instruct:free')}>Llama-3.1-8B — Free</option>
+              <option value="mistralai/mistral-7b-instruct:free" {sel('llm_model','mistralai/mistral-7b-instruct:free')}>Mistral-7B — Free</option>
+            </optgroup>''')
     if has_gemini:
         model_optgroups.append(f'''<optgroup label="Google Gemini Models">
-              <option value="gemini-2.5-flash" {sel('llm_model','gemini-2.5-flash')}>gemini-2.5-flash — Fast &amp; Latest</option>
-              <option value="gemini-2.0-flash" {sel('llm_model','gemini-2.0-flash')}>gemini-2.0-flash — Balanced</option>
+              <option value="gemini-2.0-flash" {sel('llm_model','gemini-2.0-flash')}>gemini-2.0-flash — Fast &amp; Latest</option>
+              <option value="gemini-1.5-flash" {sel('llm_model','gemini-1.5-flash')}>gemini-1.5-flash — Ultra-Fast</option>
               <option value="gemini-1.5-pro" {sel('llm_model','gemini-1.5-pro')}>gemini-1.5-pro — Deep Intelligence</option>
             </optgroup>''')
     if has_openai:
@@ -1607,12 +1721,17 @@ async def get_dashboard():
     <div class="modal-title">🤖 AI Provider Keys</div>
     <div class="modal-sub">API keys for LLM and Speech services</div>
     <div class="form-row" style="margin-bottom:14px;">
-      <div class="form-group"><label>Groq API Key</label><input type="password" id="groq_api_key" value="{config.get('groq_api_key', '')}"></div>
-      <div class="form-group"><label>Google Gemini API Key</label><input type="password" id="gemini_api_key" value="{config.get('gemini_api_key', '')}"></div>
+      <div class="form-group"><label>Groq API Key <span style="color:#22c55e;font-size:11px;">✅ Free — 500K tokens/day</span></label><input type="password" id="groq_api_key" value="{config.get('groq_api_key', '')}" placeholder="gsk_..."></div>
+      <div class="form-group"><label>Cerebras API Key <span style="color:#22c55e;font-size:11px;">✅ Free — Fastest AI</span></label><input type="password" id="cerebras_api_key" value="{config.get('cerebras_api_key', '')}" placeholder="csk-..."></div>
+      <div class="form-group"><label>Mistral API Key <span style="color:#22c55e;font-size:11px;">✅ Free — 1M tokens/month</span></label><input type="password" id="mistral_api_key" value="{config.get('mistral_api_key', '')}" placeholder="..."></div>
+      <div class="form-group"><label>Together AI API Key <span style="color:#22c55e;font-size:11px;">✅ Free $5 credits</span></label><input type="password" id="together_api_key" value="{config.get('together_api_key', '')}" placeholder="..."></div>
+      <div class="form-group"><label>Sambanova API Key <span style="color:#22c55e;font-size:11px;">✅ Free Tier</span></label><input type="password" id="sambanova_api_key" value="{config.get('sambanova_api_key', '')}" placeholder="..."></div>
+      <div class="form-group"><label>OpenRouter API Key <span style="color:#22c55e;font-size:11px;">✅ Many Free Models</span></label><input type="password" id="openrouter_api_key" value="{config.get('openrouter_api_key', '')}" placeholder="sk-or-..."></div>
+      <div class="form-group"><label>Google Gemini API Key</label><input type="password" id="gemini_api_key" value="{config.get('gemini_api_key', '')}" placeholder="AIzaSy..."></div>
       <div class="form-group"><label>OpenAI API Key</label><input type="password" id="openai_api_key" value="{config.get('openai_api_key', '')}"></div>
       <div class="form-group"><label>Anthropic API Key</label><input type="password" id="anthropic_api_key" value="{config.get('anthropic_api_key', '')}"></div>
-      <div class="form-group"><label>Sarvam API Key</label><input type="password" id="sarvam_api_key" value="{config.get('sarvam_api_key', '')}"></div>
-      <div class="form-group"><label>Deepgram API Key</label><input type="password" id="deepgram_api_key" value="{config.get('deepgram_api_key', '')}"></div>
+      <div class="form-group"><label>Sarvam API Key (TTS)</label><input type="password" id="sarvam_api_key" value="{config.get('sarvam_api_key', '')}"></div>
+      <div class="form-group"><label>Deepgram API Key (STT)</label><input type="password" id="deepgram_api_key" value="{config.get('deepgram_api_key', '')}"></div>
     </div>
     <!-- Extra Fields Container -->
     <div id="extra-cred-ai" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
@@ -2154,10 +2273,15 @@ function onProviderChange() {{
 
   optgroups.forEach(group => {{
     const label = (group.label || '').toLowerCase();
-    const isMatch = (provider === 'groq' && label.includes('groq')) ||
-                    (provider === 'google' && label.includes('gemini')) ||
-                    (provider === 'openai' && label.includes('openai')) ||
-                    (provider === 'claude' && label.includes('claude'));
+    const isMatch = (provider === 'groq'       && label.includes('groq')) ||
+                    (provider === 'google'      && label.includes('gemini')) ||
+                    (provider === 'openai'      && label.includes('openai')) ||
+                    (provider === 'claude'      && label.includes('claude')) ||
+                    (provider === 'cerebras'    && label.includes('cerebras')) ||
+                    (provider === 'mistral'     && label.includes('mistral')) ||
+                    (provider === 'together'    && label.includes('together')) ||
+                    (provider === 'sambanova'   && label.includes('sambanova')) ||
+                    (provider === 'openrouter'  && label.includes('openrouter'));
 
     group.style.display = isMatch ? '' : 'none';
     group.disabled = !isMatch;
@@ -2169,12 +2293,25 @@ function onProviderChange() {{
 
   if (!matchFound) {{
     const defaults = {{
-      groq: 'llama-3.1-8b-instant',
-      google: 'gemini-2.5-flash',
-      openai: 'gpt-4o-mini',
-      claude: 'claude-haiku-3-5-latest'
+      groq:       'llama-3.1-8b-instant',
+      google:     'gemini-2.0-flash',
+      openai:     'gpt-4o-mini',
+      claude:     'claude-haiku-3-5-latest',
+      cerebras:   'llama-3.1-8b',
+      mistral:    'mistral-small-latest',
+      together:   'meta-llama/Llama-3.1-8B-Instruct-Turbo',
+      sambanova:  'Meta-Llama-3.1-8B-Instruct',
+      openrouter: 'meta-llama/llama-3.1-8b-instruct:free',
     }};
-    modelSelect.value = defaults[provider] || 'llama-3.3-70b-versatile';
+    const defaultModel = defaults[provider] || 'llama-3.1-8b-instant';
+    // Set the first visible option in the matching group
+    const visibleGroup = modelSelect.querySelector('optgroup:not([disabled])');
+    if (visibleGroup) {{
+      const firstOption = visibleGroup.querySelector('option');
+      if (firstOption) modelSelect.value = firstOption.value;
+    }} else {{
+      modelSelect.value = defaultModel;
+    }}
   }}
 }}
 
