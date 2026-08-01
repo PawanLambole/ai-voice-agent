@@ -140,10 +140,16 @@ def read_config(force_reload: bool = False) -> dict:
         "cal_event_type_id":        ("CAL_EVENT_TYPE_ID",),
         "telegram_bot_token":       ("TELEGRAM_BOT_TOKEN",),
         "telegram_chat_id":         ("TELEGRAM_CHAT_ID",),
-        "voicelink_sip_domain":     ("VOICELINK_SIP_DOMAIN",),
-        "voicelink_username":       ("VOICELINK_USERNAME",),
-        "voicelink_password":       ("VOICELINK_PASSWORD",),
-        "voicelink_outbound_number":("VOICELINK_OUTBOUND_NUMBER",),
+        # ── VOBIZ (active) — comment out and uncomment VoiceLink block below to roll back
+        "vobiz_sip_domain":         ("VOBIZ_SIP_DOMAIN",),
+        "vobiz_username":           ("VOBIZ_USERNAME",),
+        "vobiz_password":           ("VOBIZ_PASSWORD",),
+        "vobiz_outbound_number":    ("VOBIZ_OUTBOUND_NUMBER",),
+        # ── VOICELINK (commented out) ──
+        # "voicelink_sip_domain":   ("VOICELINK_SIP_DOMAIN",),
+        # "voicelink_username":     ("VOICELINK_USERNAME",),
+        # "voicelink_password":     ("VOICELINK_PASSWORD",),
+        # "voicelink_outbound_number": ("VOICELINK_OUTBOUND_NUMBER",),
         "supabase_url":             ("SUPABASE_URL",),
         "supabase_key":             ("SUPABASE_KEY",),
     }
@@ -209,7 +215,8 @@ def write_config(data: dict):
         "sambanova_api_key", "openrouter_api_key",
         "cal_api_key", "cal_event_type_id",
         "telegram_bot_token", "telegram_chat_id",
-        "voicelink_sip_domain", "voicelink_username", "voicelink_password", "voicelink_outbound_number",
+        "vobiz_sip_domain", "vobiz_username", "vobiz_password", "vobiz_outbound_number",
+        # "voicelink_sip_domain", "voicelink_username", "voicelink_password", "voicelink_outbound_number",  # VoiceLink (commented out)
     }
 
     # 1. Write local backup — behavioral settings only
@@ -268,10 +275,16 @@ def update_env_file(key_value_map: dict, env_path: str = ".env"):
             "openrouter_api_key": "OPENROUTER_API_KEY",
             "telegram_bot_token": "TELEGRAM_BOT_TOKEN",
             "telegram_chat_id": "TELEGRAM_CHAT_ID",
-            "voicelink_sip_domain": "VOICELINK_SIP_DOMAIN",
-            "voicelink_username": "VOICELINK_USERNAME",
-            "voicelink_password": "VOICELINK_PASSWORD",
-            "voicelink_outbound_number": "VOICELINK_OUTBOUND_NUMBER",
+            # ── VOBIZ (active) — swap with VoiceLink block below to roll back
+            "vobiz_sip_domain":     "VOBIZ_SIP_DOMAIN",
+            "vobiz_username":       "VOBIZ_USERNAME",
+            "vobiz_password":       "VOBIZ_PASSWORD",
+            "vobiz_outbound_number": "VOBIZ_OUTBOUND_NUMBER",
+            # ── VOICELINK (commented out) ──
+            # "voicelink_sip_domain": "VOICELINK_SIP_DOMAIN",
+            # "voicelink_username":   "VOICELINK_USERNAME",
+            # "voicelink_password":   "VOICELINK_PASSWORD",
+            # "voicelink_outbound_number": "VOICELINK_OUTBOUND_NUMBER",
         }
 
         updates_to_make = {}
@@ -322,10 +335,16 @@ def ensure_supabase_env_from(cfg: dict):
         ("together_api_key", "TOGETHER_API_KEY"),
         ("sambanova_api_key", "SAMBANOVA_API_KEY"),
         ("openrouter_api_key", "OPENROUTER_API_KEY"),
-        ("voicelink_sip_domain", "VOICELINK_SIP_DOMAIN"),
-        ("voicelink_username", "VOICELINK_USERNAME"),
-        ("voicelink_password", "VOICELINK_PASSWORD"),
-        ("voicelink_outbound_number", "VOICELINK_OUTBOUND_NUMBER"),
+        # ── VOBIZ (active) — swap with VoiceLink block below to roll back
+        ("vobiz_sip_domain", "VOBIZ_SIP_DOMAIN"),
+        ("vobiz_username", "VOBIZ_USERNAME"),
+        ("vobiz_password", "VOBIZ_PASSWORD"),
+        ("vobiz_outbound_number", "VOBIZ_OUTBOUND_NUMBER"),
+        # ── VOICELINK (commented out) ──
+        # ("voicelink_sip_domain", "VOICELINK_SIP_DOMAIN"),
+        # ("voicelink_username", "VOICELINK_USERNAME"),
+        # ("voicelink_password", "VOICELINK_PASSWORD"),
+        # ("voicelink_outbound_number", "VOICELINK_OUTBOUND_NUMBER"),
         ("supabase_url", "SUPABASE_URL"),
         ("supabase_key", "SUPABASE_KEY"),
     ]:

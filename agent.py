@@ -196,7 +196,9 @@ class AgentTools(llm.ToolContext):
         self.caller_phone        = caller_phone
         self.caller_name         = caller_name
         self.booking_intent: dict | None = None
-        self.sip_domain          = os.getenv("VOICELINK_SIP_DOMAIN")
+        # VOBIZ (active) — swap comments on the two lines below to roll back to VoiceLink
+        self.sip_domain          = os.getenv("VOBIZ_SIP_DOMAIN")
+        # self.sip_domain        = os.getenv("VOICELINK_SIP_DOMAIN")  # VoiceLink (commented out)
         self.ctx_api             = None
         self.room_name           = None
         self._sip_identity       = None
@@ -552,94 +554,134 @@ async def entrypoint(ctx: JobContext):
     # ── Load config ───────────────────────────────────────────────────────
     live_config   = get_live_config(caller_phone)
 
-    # ── Outbound SIP / VoiceLink Dialing ──────────────────────────────────
+    # ── Outbound SIP Dialing (VOBIZ — active) ────────────────────────────
     if is_outbound and phone_number:
         norm = normalize_indian_number(phone_number)
         national_10 = norm["national_10"]
-        full_e164   = norm["full_e164"]
+        full_e164   = norm["full_e164"]  # e.g. +919766573966
 
-        voicelink_mode = (
-            live_config.get("voicelink_mode")
-            or os.getenv("VOICELINK_MODE", "sip").lower()
+        # ── VOBIZ SIP Trunking (Active Provider) ──────────────────────────
+        trunk_id = (
+            live_config.get("sip_trunk_id")
+            or live_config.get("outbound_trunk_id")
+            or os.getenv("VOBIZ_SIP_TRUNK_ID")
+            or os.getenv("OUTBOUND_TRUNK_ID")
+            or "ST_UFXhWiBxXpbg"
         )
+        if trunk_id:
+            # Vobiz expects raw E.164 (no tech prefix)
+            dial_target = full_e164
 
-        # Mode 1: VoiceLink REST API Add Lead (/v1/add_lead)
-        if voicelink_mode == "api":
-            raw_did = (
-                live_config.get("voicelink_outbound_number")
-                or os.getenv("VOICELINK_OUTBOUND_NUMBER")
-                or os.getenv("VOICELINK_DID_NUMBER")
-                or "919429391395"
+            # Outbound caller ID (Vobiz DID)
+            raw_caller = (
+                live_config.get("vobiz_outbound_number")
+                or os.getenv("VOBIZ_OUTBOUND_NUMBER")
+                or "+911171366938"
             )
-            logger.info(f"[OUTBOUND-API] Originating VoiceLink call to {national_10} via DID {raw_did}...")
+            caller_norm = normalize_indian_number(raw_caller)
+            caller_id   = f"+91{caller_norm['national_10']}"
+
+            # Vobiz SIP domain
+            sip_domain = os.getenv("VOBIZ_SIP_DOMAIN", "dcc92eae.sip.vobiz.ai")
+
+            logger.info(f"[OUTBOUND-SIP] [VOBIZ] Dialing {dial_target} from {caller_id} via trunk {trunk_id} @ {sip_domain}...")
             try:
-                client = VoiceLinkClient()
-                res = client.originate_call(
-                    did_number=raw_did,
-                    phone_number=national_10,
-                    custom_parameters=json.dumps({"room": ctx.room.name}),
+                from livekit.api import CreateSIPParticipantRequest as _SipReq
+                sip_headers = {
+                    "P-Asserted-Identity": f"<sip:{caller_id}@{sip_domain}>",
+                    "Remote-Party-ID": f"<sip:{caller_id}@{sip_domain}>;party=calling;privacy=off",
+                }
+                sip_req = _SipReq(
+                    sip_trunk_id=trunk_id,
+                    sip_call_to=dial_target,            # E.164 target number
+                    sip_number=caller_id,               # Vobiz outbound DID
+                    room_name=ctx.room.name,
+                    participant_identity=f"sip_{dial_target.replace('+', '')}",
+                    participant_name="Recipient",
+                    headers=sip_headers,
                 )
-                logger.info(f"[OUTBOUND-API] VoiceLink call originated successfully: {res}")
+                await ctx.api.sip.create_sip_participant(sip_req)
+                logger.info(f"[OUTBOUND-SIP] [VOBIZ] Call initiated: {caller_id} → {dial_target}")
             except Exception as e:
-                logger.error(f"[OUTBOUND-API] Failed to originate VoiceLink API call: {e}")
-
-        # Mode 2: LiveKit SIP Trunking (Default)
+                logger.error(f"[OUTBOUND-SIP] [VOBIZ] Failed to create SIP participant for {dial_target}: {e}")
         else:
-            trunk_id = (
-                live_config.get("sip_trunk_id")
-                or live_config.get("outbound_trunk_id")
-                or os.getenv("SIP_TRUNK_ID")
-                or os.getenv("OUTBOUND_TRUNK_ID")
-                or os.getenv("VOICELINK_SIP_TRUNK_ID")
-                or "ST_UFXhWiBxXpbg"
-            )
-            if trunk_id:
-                tech_prefix = (
-                    live_config.get("voicelink_tech_prefix")
-                    or os.getenv("VOICELINK_TECH_PREFIX")
-                    or "45454"
-                )
-                include_cc = os.getenv("VOICELINK_INCLUDE_COUNTRY_PREFIX", "false").lower() == "true"
-                
-                # VoiceLink carrier expects 10-digit national number after tech prefix (e.g. 454549766573966)
-                if tech_prefix:
-                    num_for_dial = f"91{national_10}" if include_cc else national_10
-                    dial_target = tech_prefix + num_for_dial if not num_for_dial.startswith(tech_prefix) else num_for_dial
-                else:
-                    dial_target = full_e164
+            logger.error("[OUTBOUND] Cannot dial: sip_trunk_id missing in DB and env")
 
-                # Outbound caller DID
-                raw_caller = (
-                    live_config.get("voicelink_outbound_number")
-                    or os.getenv("VOICELINK_OUTBOUND_NUMBER")
-                    or "919429391395"
-                )
-                caller_norm = normalize_indian_number(raw_caller)
-                caller_id = f"91{caller_norm['national_10']}"
-
-                logger.info(f"[OUTBOUND-SIP] Dialing target {dial_target} (national: {national_10}) from DID {caller_id} via SIP Trunk ({trunk_id})...")
-                try:
-                    from livekit.api import CreateSIPParticipantRequest as _SipReq
-                    sip_domain = os.getenv("VOICELINK_SIP_DOMAIN", "160.30.71.89:3300")
-                    sip_headers = {
-                        "P-Asserted-Identity": f"<sip:{caller_id}@{sip_domain}>",
-                        "Remote-Party-ID": f"<sip:{caller_id}@{sip_domain}>;party=calling;privacy=off",
-                    }
-                    sip_req = _SipReq(
-                        sip_trunk_id=trunk_id,
-                        sip_call_to=dial_target,   # Target recipient number with Tech Prefix
-                        sip_number=caller_id,       # Our outbound DID caller ID
-                        room_name=ctx.room.name,
-                        participant_identity=f"sip_{dial_target}",
-                        participant_name="Recipient",
-                        headers=sip_headers,
-                    )
-                    await ctx.api.sip.create_sip_participant(sip_req)
-                    logger.info(f"[OUTBOUND-SIP] SIP call successfully initiated from DID {caller_id} to {dial_target}")
-                except Exception as e:
-                    logger.error(f"[OUTBOUND-SIP] Failed to create SIP participant for {dial_target}: {e}")
-            else:
-                logger.error("[OUTBOUND] Cannot dial: sip_trunk_id missing in DB and env")
+        # ── VOICELINK DIALING (COMMENTED OUT — restore to roll back) ──────
+        # voicelink_mode = (
+        #     live_config.get("voicelink_mode")
+        #     or os.getenv("VOICELINK_MODE", "sip").lower()
+        # )
+        # # Mode 1: VoiceLink REST API Add Lead (/v1/add_lead)
+        # if voicelink_mode == "api":
+        #     raw_did = (
+        #         live_config.get("voicelink_outbound_number")
+        #         or os.getenv("VOICELINK_OUTBOUND_NUMBER")
+        #         or os.getenv("VOICELINK_DID_NUMBER")
+        #         or "919429391395"
+        #     )
+        #     logger.info(f"[OUTBOUND-API] Originating VoiceLink call to {national_10} via DID {raw_did}...")
+        #     try:
+        #         client = VoiceLinkClient()
+        #         res = client.originate_call(
+        #             did_number=raw_did,
+        #             phone_number=national_10,
+        #             custom_parameters=json.dumps({"room": ctx.room.name}),
+        #         )
+        #         logger.info(f"[OUTBOUND-API] VoiceLink call originated successfully: {res}")
+        #     except Exception as e:
+        #         logger.error(f"[OUTBOUND-API] Failed to originate VoiceLink API call: {e}")
+        # # Mode 2: VoiceLink SIP Trunking (Tech Prefix)
+        # else:
+        #     vl_trunk_id = (
+        #         live_config.get("sip_trunk_id")
+        #         or live_config.get("outbound_trunk_id")
+        #         or os.getenv("SIP_TRUNK_ID")
+        #         or os.getenv("OUTBOUND_TRUNK_ID")
+        #         or os.getenv("VOICELINK_SIP_TRUNK_ID")
+        #     )
+        #     if vl_trunk_id:
+        #         tech_prefix = (
+        #             live_config.get("voicelink_tech_prefix")
+        #             or os.getenv("VOICELINK_TECH_PREFIX")
+        #             or "45454"
+        #         )
+        #         include_cc = os.getenv("VOICELINK_INCLUDE_COUNTRY_PREFIX", "false").lower() == "true"
+        #         if tech_prefix:
+        #             num_for_dial = f"91{national_10}" if include_cc else national_10
+        #             vl_dial_target = tech_prefix + num_for_dial if not num_for_dial.startswith(tech_prefix) else num_for_dial
+        #         else:
+        #             vl_dial_target = full_e164
+        #         raw_caller = (
+        #             live_config.get("voicelink_outbound_number")
+        #             or os.getenv("VOICELINK_OUTBOUND_NUMBER")
+        #             or "919429391395"
+        #         )
+        #         vl_caller_norm = normalize_indian_number(raw_caller)
+        #         vl_caller_id = f"91{vl_caller_norm['national_10']}"
+        #         vl_sip_domain = os.getenv("VOICELINK_SIP_DOMAIN", "160.30.71.89:3300")
+        #         logger.info(f"[OUTBOUND-SIP] [VOICELINK] Dialing {vl_dial_target} from {vl_caller_id} via trunk {vl_trunk_id}...")
+        #         try:
+        #             from livekit.api import CreateSIPParticipantRequest as _SipReq
+        #             vl_sip_headers = {
+        #                 "P-Asserted-Identity": f"<sip:{vl_caller_id}@{vl_sip_domain}>",
+        #                 "Remote-Party-ID": f"<sip:{vl_caller_id}@{vl_sip_domain}>;party=calling;privacy=off",
+        #             }
+        #             vl_sip_req = _SipReq(
+        #                 sip_trunk_id=vl_trunk_id,
+        #                 sip_call_to=vl_dial_target,
+        #                 sip_number=vl_caller_id,
+        #                 room_name=ctx.room.name,
+        #                 participant_identity=f"sip_{vl_dial_target}",
+        #                 participant_name="Recipient",
+        #                 headers=vl_sip_headers,
+        #             )
+        #             await ctx.api.sip.create_sip_participant(vl_sip_req)
+        #             logger.info(f"[OUTBOUND-SIP] [VOICELINK] Call initiated from {vl_caller_id} to {vl_dial_target}")
+        #         except Exception as e:
+        #             logger.error(f"[OUTBOUND-SIP] [VOICELINK] Failed to create SIP participant for {vl_dial_target}: {e}")
+        #     else:
+        #         logger.error("[OUTBOUND] [VOICELINK] Cannot dial: sip_trunk_id missing in DB and env")
 
 
 
