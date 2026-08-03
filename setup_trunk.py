@@ -12,32 +12,39 @@ async def main():
     lkapi = api.LiveKitAPI()
     sip = lkapi.sip
 
-    # ── VOBIZ (active) ─────────────────────────────────────────────────────
-    trunk_id = os.getenv("OUTBOUND_TRUNK_ID") or os.getenv("VOBIZ_SIP_TRUNK_ID")
-    address  = os.getenv("VOBIZ_SIP_DOMAIN")
-    username = os.getenv("VOBIZ_USERNAME")
-    password = os.getenv("VOBIZ_PASSWORD")
-    number   = os.getenv("VOBIZ_OUTBOUND_NUMBER")
+    provider = os.getenv("TELEPHONY_PROVIDER", "MOBILE_SIM").upper()
 
-    # ── VOICELINK (commented out — uncomment to roll back) ─────────────────
-    # trunk_id = os.getenv("OUTBOUND_TRUNK_ID")
-    # address  = os.getenv("VOICELINK_SIP_DOMAIN")
-    # username = os.getenv("VOICELINK_USERNAME")
-    # password = os.getenv("VOICELINK_PASSWORD")
-    # number   = os.getenv("VOICELINK_OUTBOUND_NUMBER")
+    if provider == "MOBILE_SIM":
+        trunk_id = os.getenv("OUTBOUND_TRUNK_ID") or os.getenv("MOBILE_SIP_TRUNK_ID")
+        address  = os.getenv("MOBILE_SIP_DOMAIN")
+        username = os.getenv("MOBILE_SIP_USERNAME")
+        password = os.getenv("MOBILE_SIP_PASSWORD")
+        number   = os.getenv("MOBILE_OUTBOUND_NUMBER")
+    elif provider == "VOBIZ":
+        trunk_id = os.getenv("OUTBOUND_TRUNK_ID") or os.getenv("VOBIZ_SIP_TRUNK_ID")
+        address  = os.getenv("VOBIZ_SIP_DOMAIN")
+        username = os.getenv("VOBIZ_USERNAME")
+        password = os.getenv("VOBIZ_PASSWORD")
+        number   = os.getenv("VOBIZ_OUTBOUND_NUMBER")
+    else:
+        trunk_id = os.getenv("OUTBOUND_TRUNK_ID") or os.getenv("VOICELINK_SIP_TRUNK_ID")
+        address  = os.getenv("VOICELINK_SIP_DOMAIN")
+        username = os.getenv("VOICELINK_USERNAME")
+        password = os.getenv("VOICELINK_PASSWORD")
+        number   = os.getenv("VOICELINK_OUTBOUND_NUMBER")
 
     if not trunk_id:
-        print("Error: OUTBOUND_TRUNK_ID / VOBIZ_SIP_TRUNK_ID not found in .env")
+        print(f"Error: OUTBOUND_TRUNK_ID / {provider}_SIP_TRUNK_ID not found in .env")
         return
 
     print(f"Updating SIP Trunk: {trunk_id}")
-    print(f"  Provider: VOBIZ")
+    print(f"  Provider: {provider}")
     print(f"  Address:  {address}")
     print(f"  Username: {username}")
     print(f"  Numbers:  [{number}]")
 
     try:
-        # Update the trunk with Vobiz credentials
+        # Update the trunk credentials
         await sip.update_outbound_trunk_fields(
             trunk_id,
             address=address,
@@ -45,7 +52,7 @@ async def main():
             auth_password=password,
             numbers=[number] if number else [],
         )
-        print("\n[SUCCESS] SIP Trunk updated successfully with Vobiz credentials!")
+        print(f"\n[SUCCESS] SIP Trunk updated successfully with {provider} credentials!")
 
     except Exception as e:
         print(f"\n[ERROR] Failed to update trunk: {e}")

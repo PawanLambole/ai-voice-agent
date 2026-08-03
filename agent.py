@@ -196,9 +196,8 @@ class AgentTools(llm.ToolContext):
         self.caller_phone        = caller_phone
         self.caller_name         = caller_name
         self.booking_intent: dict | None = None
-        # VOBIZ (active) — swap comments on the two lines below to roll back to VoiceLink
-        self.sip_domain          = os.getenv("VOBIZ_SIP_DOMAIN")
-        # self.sip_domain        = os.getenv("VOICELINK_SIP_DOMAIN")  # VoiceLink (commented out)
+        # Active SIP Domain resolution (MOBILE_SIM -> VOBIZ -> VOICELINK fallback)
+        self.sip_domain          = os.getenv("MOBILE_SIP_DOMAIN") or os.getenv("VOBIZ_SIP_DOMAIN") or os.getenv("VOICELINK_SIP_DOMAIN")
         self.ctx_api             = None
         self.room_name           = None
         self._sip_identity       = None
@@ -560,52 +559,94 @@ async def entrypoint(ctx: JobContext):
         national_10 = norm["national_10"]
         full_e164   = norm["full_e164"]  # e.g. +919766573966
 
-        # ── VOBIZ SIP Trunking (Active Provider) ──────────────────────────
-        trunk_id = (
-            live_config.get("sip_trunk_id")
-            or live_config.get("outbound_trunk_id")
-            or os.getenv("VOBIZ_SIP_TRUNK_ID")
-            or os.getenv("OUTBOUND_TRUNK_ID")
-            or "ST_UFXhWiBxXpbg"
-        )
-        if trunk_id:
-            # Vobiz expects raw E.164 (no tech prefix)
-            dial_target = full_e164
+        # ── Outbound Telephony Provider Selection ──────────────────────────
+        telephony_provider = (
+            live_config.get("telephony_provider")
+            or os.getenv("TELEPHONY_PROVIDER", "MOBILE_SIM")
+        ).upper()
 
-            # Outbound caller ID (Vobiz DID)
-            raw_caller = (
-                live_config.get("vobiz_outbound_number")
-                or os.getenv("VOBIZ_OUTBOUND_NUMBER")
-                or "+911171366938"
+        if telephony_provider == "MOBILE_SIM":
+            trunk_id = (
+                live_config.get("mobile_sip_trunk_id")
+                or os.getenv("MOBILE_SIP_TRUNK_ID")
+                or os.getenv("OUTBOUND_TRUNK_ID")
+                or "ST_UFXhWiBxXpbg"
             )
-            caller_norm = normalize_indian_number(raw_caller)
-            caller_id   = f"+91{caller_norm['national_10']}"
-
-            # Vobiz SIP domain
-            sip_domain = os.getenv("VOBIZ_SIP_DOMAIN", "dcc92eae.sip.vobiz.ai")
-
-            logger.info(f"[OUTBOUND-SIP] [VOBIZ] Dialing {dial_target} from {caller_id} via trunk {trunk_id} @ {sip_domain}...")
-            try:
-                from livekit.api import CreateSIPParticipantRequest as _SipReq
-                sip_headers = {
-                    "P-Asserted-Identity": f"<sip:{caller_id}@{sip_domain}>",
-                    "Remote-Party-ID": f"<sip:{caller_id}@{sip_domain}>;party=calling;privacy=off",
-                }
-                sip_req = _SipReq(
-                    sip_trunk_id=trunk_id,
-                    sip_call_to=dial_target,            # E.164 target number
-                    sip_number=caller_id,               # Vobiz outbound DID
-                    room_name=ctx.room.name,
-                    participant_identity=f"sip_{dial_target.replace('+', '')}",
-                    participant_name="Recipient",
-                    headers=sip_headers,
+            if trunk_id:
+                dial_target = full_e164
+                raw_caller  = (
+                    live_config.get("mobile_outbound_number")
+                    or os.getenv("MOBILE_OUTBOUND_NUMBER")
+                    or "+91XXXXXXXXXX"
                 )
-                await ctx.api.sip.create_sip_participant(sip_req)
-                logger.info(f"[OUTBOUND-SIP] [VOBIZ] Call initiated: {caller_id} → {dial_target}")
-            except Exception as e:
-                logger.error(f"[OUTBOUND-SIP] [VOBIZ] Failed to create SIP participant for {dial_target}: {e}")
+                caller_norm = normalize_indian_number(raw_caller)
+                caller_id   = f"+91{caller_norm['national_10']}" if caller_norm["national_10"] else raw_caller
+                sip_domain  = os.getenv("MOBILE_SIP_DOMAIN", "192.168.1.100:5060")
+
+                logger.info(f"[OUTBOUND-SIP] [MOBILE_SIM] Dialing {dial_target} from {caller_id} via trunk {trunk_id} @ {sip_domain}...")
+                try:
+                    from livekit.api import CreateSIPParticipantRequest as _SipReq
+                    sip_headers = {
+                        "P-Asserted-Identity": f"<sip:{caller_id}@{sip_domain}>",
+                        "Remote-Party-ID": f"<sip:{caller_id}@{sip_domain}>;party=calling;privacy=off",
+                    }
+                    sip_req = _SipReq(
+                        sip_trunk_id=trunk_id,
+                        sip_call_to=dial_target,
+                        sip_number=caller_id,
+                        room_name=ctx.room.name,
+                        participant_identity=f"sip_{dial_target.replace('+', '')}",
+                        participant_name="Recipient",
+                        headers=sip_headers,
+                    )
+                    await ctx.api.sip.create_sip_participant(sip_req)
+                    logger.info(f"[OUTBOUND-SIP] [MOBILE_SIM] Call initiated: {caller_id} → {dial_target}")
+                except Exception as e:
+                    logger.error(f"[OUTBOUND-SIP] [MOBILE_SIM] Failed to create SIP participant for {dial_target}: {e}")
+            else:
+                logger.error("[OUTBOUND] [MOBILE_SIM] Cannot dial: sip_trunk_id missing in DB and env")
         else:
-            logger.error("[OUTBOUND] Cannot dial: sip_trunk_id missing in DB and env")
+            # ── VOBIZ SIP Trunking ───────────────────────────────────────────
+            trunk_id = (
+                live_config.get("sip_trunk_id")
+                or live_config.get("outbound_trunk_id")
+                or os.getenv("VOBIZ_SIP_TRUNK_ID")
+                or os.getenv("OUTBOUND_TRUNK_ID")
+                or "ST_UFXhWiBxXpbg"
+            )
+            if trunk_id:
+                dial_target = full_e164
+                raw_caller = (
+                    live_config.get("vobiz_outbound_number")
+                    or os.getenv("VOBIZ_OUTBOUND_NUMBER")
+                    or "+911171366938"
+                )
+                caller_norm = normalize_indian_number(raw_caller)
+                caller_id   = f"+91{caller_norm['national_10']}"
+                sip_domain  = os.getenv("VOBIZ_SIP_DOMAIN", "dcc92eae.sip.vobiz.ai")
+
+                logger.info(f"[OUTBOUND-SIP] [VOBIZ] Dialing {dial_target} from {caller_id} via trunk {trunk_id} @ {sip_domain}...")
+                try:
+                    from livekit.api import CreateSIPParticipantRequest as _SipReq
+                    sip_headers = {
+                        "P-Asserted-Identity": f"<sip:{caller_id}@{sip_domain}>",
+                        "Remote-Party-ID": f"<sip:{caller_id}@{sip_domain}>;party=calling;privacy=off",
+                    }
+                    sip_req = _SipReq(
+                        sip_trunk_id=trunk_id,
+                        sip_call_to=dial_target,
+                        sip_number=caller_id,
+                        room_name=ctx.room.name,
+                        participant_identity=f"sip_{dial_target.replace('+', '')}",
+                        participant_name="Recipient",
+                        headers=sip_headers,
+                    )
+                    await ctx.api.sip.create_sip_participant(sip_req)
+                    logger.info(f"[OUTBOUND-SIP] [VOBIZ] Call initiated: {caller_id} → {dial_target}")
+                except Exception as e:
+                    logger.error(f"[OUTBOUND-SIP] [VOBIZ] Failed to create SIP participant for {dial_target}: {e}")
+            else:
+                logger.error("[OUTBOUND] Cannot dial: sip_trunk_id missing in DB and env")
 
         # ── VOICELINK DIALING (COMMENTED OUT — restore to roll back) ──────
         # voicelink_mode = (

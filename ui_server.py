@@ -140,7 +140,12 @@ def read_config(force_reload: bool = False) -> dict:
         "cal_event_type_id":        ("CAL_EVENT_TYPE_ID",),
         "telegram_bot_token":       ("TELEGRAM_BOT_TOKEN",),
         "telegram_chat_id":         ("TELEGRAM_CHAT_ID",),
-        # ── VOBIZ (active) — comment out and uncomment VoiceLink block below to roll back
+        "telephony_provider":       ("TELEPHONY_PROVIDER",),
+        "mobile_sip_domain":        ("MOBILE_SIP_DOMAIN",),
+        "mobile_sip_username":      ("MOBILE_SIP_USERNAME",),
+        "mobile_sip_password":      ("MOBILE_SIP_PASSWORD",),
+        "mobile_outbound_number":   ("MOBILE_OUTBOUND_NUMBER",),
+        # ── VOBIZ (commented out) ──────────────────────────────────
         "vobiz_sip_domain":         ("VOBIZ_SIP_DOMAIN",),
         "vobiz_username":           ("VOBIZ_USERNAME",),
         "vobiz_password":           ("VOBIZ_PASSWORD",),
